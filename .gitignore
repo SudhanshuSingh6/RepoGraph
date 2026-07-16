@@ -22,3 +22,6 @@ repos/
 .idea/
 .vscode/
 *.swp
+
+# Local repos data
+repos_data/

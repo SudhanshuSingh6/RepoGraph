@@ -21,7 +21,13 @@ def validate_github_url(url: str) -> None:
 
 def clone_repo(url: str, dest: Path, size_limit_mb: int) -> None:
     """Shallow-clone url into dest; raise if unpacked size exceeds limit."""
-    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot create repos directory {dest}: {e}. Check REPOS_BASE_PATH.",
+        )
     try:
         subprocess.run(
             ["git", "clone", "--depth", "1", "--quiet", url, str(dest)],

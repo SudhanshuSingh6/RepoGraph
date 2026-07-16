@@ -1,5 +1,9 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent  # .../backend
 
 
 class Settings(BaseSettings):
@@ -11,7 +15,8 @@ class Settings(BaseSettings):
     repos_base_path: str = "/repos"
 
     class Config:
-        env_file = ".env"
+        # root .env first, backend/.env overrides — anchored to file location, not CWD
+        env_file = (_BACKEND_DIR.parent / ".env", _BACKEND_DIR / ".env")
         env_file_encoding = "utf-8"
 
 

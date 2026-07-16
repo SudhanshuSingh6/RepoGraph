@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from neo4j.exceptions import ServiceUnavailable
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
@@ -43,16 +44,24 @@ async def clone(
 
     lang_info = detect_language(dest)
 
-    driver = await get_driver()
-    await create_repo_node(
-        driver,
-        repo_id=repo_id,
-        name=name,
-        source_url=body.url,
-        local_path=str(dest),
-        primary_language=lang_info["primary"],
-        language_breakdown=lang_info["breakdown"],
-    )
+    try:
+        driver = await get_driver()
+        await create_repo_node(
+            driver,
+            repo_id=repo_id,
+            name=name,
+            source_url=body.url,
+            local_path=str(dest),
+            primary_language=lang_info["primary"],
+            language_breakdown=lang_info["breakdown"],
+        )
+    except (ServiceUnavailable, OSError):
+        shutil.rmtree(dest, ignore_errors=True)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot reach Neo4j at {settings.neo4j_uri} — is it running? "
+                   "Try: docker compose up -d neo4j",
+        )
 
     return RepoResponse(
         repo_id=repo_id,
@@ -95,16 +104,24 @@ async def upload(
 
     lang_info = detect_language(dest)
 
-    driver = await get_driver()
-    await create_repo_node(
-        driver,
-        repo_id=repo_id,
-        name=name,
-        source_url="",
-        local_path=str(dest),
-        primary_language=lang_info["primary"],
-        language_breakdown=lang_info["breakdown"],
-    )
+    try:
+        driver = await get_driver()
+        await create_repo_node(
+            driver,
+            repo_id=repo_id,
+            name=name,
+            source_url="",
+            local_path=str(dest),
+            primary_language=lang_info["primary"],
+            language_breakdown=lang_info["breakdown"],
+        )
+    except (ServiceUnavailable, OSError):
+        shutil.rmtree(dest, ignore_errors=True)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot reach Neo4j at {settings.neo4j_uri} — is it running? "
+                   "Try: docker compose up -d neo4j",
+        )
 
     return RepoResponse(
         repo_id=repo_id,
