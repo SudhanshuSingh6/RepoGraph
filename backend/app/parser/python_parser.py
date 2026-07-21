@@ -1,10 +1,18 @@
 import uuid
 from pathlib import Path
 
-from tree_sitter import Language, Parser, Node
 import tree_sitter_python as tspython
+from tree_sitter import Language, Node, Parser
 
-from .base import ParseResult, NodeData, EdgeData, CallSite, ImportRef, InheritanceRef
+from .base import (
+    CallSite,
+    EdgeData,
+    ImportRef,
+    InheritanceRef,
+    NodeData,
+    ParseResult,
+    classify_role,
+)
 
 _LANGUAGE = Language(tspython.language())
 _PARSER = Parser(_LANGUAGE)
@@ -12,8 +20,13 @@ _PARSER = Parser(_LANGUAGE)
 _HTTP_METHODS = {"route", "get", "post", "put", "delete", "patch", "head", "options"}
 
 _BRANCH_TYPES = {
-    "if_statement", "elif_clause", "for_statement", "while_statement",
-    "except_clause", "boolean_operator", "conditional_expression",
+    "if_statement",
+    "elif_clause",
+    "for_statement",
+    "while_statement",
+    "except_clause",
+    "boolean_operator",
+    "conditional_expression",
 }
 
 
@@ -91,14 +104,20 @@ class PythonParser:
             return None
 
         class_id = str(uuid.uuid4())
+        class_name = _text(name_node)
+        props: dict = {}
+        role = classify_role(class_name, file_path)
+        if role:
+            props["role"] = role
         class_node = NodeData(
             id=class_id,
             type="Class",
-            name=_text(name_node),
+            name=class_name,
             repo_id=repo_id,
             file_path=file_path,
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
+            properties=props,
         )
         result.nodes.append(class_node)
         result.edges.append(EdgeData(source_id=file_id, target_id=class_id, type="CONTAINS"))
@@ -110,7 +129,9 @@ class PythonParser:
                 parent = _text(sc).strip()
                 if parent and parent != "object":
                     result.inheritance_refs.append(
-                        InheritanceRef(child_node_id=class_id, parent_name=parent, ref_type="EXTENDS")
+                        InheritanceRef(
+                            child_node_id=class_id, parent_name=parent, ref_type="EXTENDS"
+                        )
                     )
 
         body = node.child_by_field_name("body")
@@ -208,7 +229,9 @@ class PythonParser:
                 properties={"http_method": http_verb, "path": path},
             )
             result.nodes.append(ep_node)
-            result.edges.append(EdgeData(source_id=file_id, target_id=ep_id, type="EXPOSES_ENDPOINT"))
+            result.edges.append(
+                EdgeData(source_id=file_id, target_id=ep_id, type="EXPOSES_ENDPOINT")
+            )
             result.edges.append(EdgeData(source_id=ep_id, target_id=handler.id, type="CALLS"))
             return
 
@@ -302,13 +325,15 @@ class PythonParser:
                     n = child.child_by_field_name("name")
                     module = _text(n)
                 if module:
-                    result.import_refs.append(ImportRef(
-                        file_node_id=file_id,
-                        module_path=module,
-                        from_module="",
-                        imported_names=[module],
-                        is_relative=False,
-                    ))
+                    result.import_refs.append(
+                        ImportRef(
+                            file_node_id=file_id,
+                            module_path=module,
+                            from_module="",
+                            imported_names=[module],
+                            is_relative=False,
+                        )
+                    )
 
         elif node.type == "import_from_statement":
             module_text = ""
@@ -337,10 +362,12 @@ class PythonParser:
                 elif t == "wildcard_import":
                     imported.append("*")
 
-            result.import_refs.append(ImportRef(
-                file_node_id=file_id,
-                module_path=module_text,
-                from_module=module_text,
-                imported_names=imported,
-                is_relative=is_relative,
-            ))
+            result.import_refs.append(
+                ImportRef(
+                    file_node_id=file_id,
+                    module_path=module_text,
+                    from_module=module_text,
+                    imported_names=imported,
+                    is_relative=is_relative,
+                )
+            )

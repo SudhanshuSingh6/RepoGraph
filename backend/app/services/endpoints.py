@@ -38,12 +38,14 @@ async def get_endpoints(driver: AsyncDriver, repo_id: str) -> dict:
         async for record in result:
             ep = record["ep"]
             props = dict(ep)
-            endpoints.append({
-                "id":         props.get("id", ""),
-                "verb":       props.get("http_method", props.get("verb", "GET")),
-                "path":       props.get("path", ""),
-                "handler":    dict(record["handler"]) if record["handler"] else None,
-                "call_chain": [dict(n) for n in (record["call_chain"] or [])],
-            })
+            endpoints.append(
+                {
+                    "id": props.get("id", ""),
+                    "verb": props.get("http_method", props.get("verb", "GET")),
+                    "path": props.get("path", ""),
+                    "handler": dict(record["handler"]) if record["handler"] else None,
+                    "call_chain": [dict(n) for n in (record["call_chain"] or [])],
+                }
+            )
 
     return {"endpoints": endpoints}

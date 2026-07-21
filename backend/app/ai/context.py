@@ -52,7 +52,8 @@ async def get_method_names(driver: AsyncDriver, node_id: str, limit: int = 10) -
             MATCH (n:Node {id: $id})-[:CONTAINS*1..2]->(m:Method)
             RETURN m.name AS name LIMIT $limit
             """,
-            id=node_id, limit=limit,
+            id=node_id,
+            limit=limit,
         )
         return [r["name"] async for r in result]
 

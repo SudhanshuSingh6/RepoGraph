@@ -4,19 +4,22 @@ Two-pass repo orchestrator.
 Pass 1  — parse every file → collect nodes/edges/call-sites/import-refs.
 Pass 2  — resolve imports, calls, extends/implements → cross-file edges.
 """
+
 import logging
+import time
 import uuid
 from pathlib import Path
 
 from neo4j import AsyncDriver
 
+from app.graph.builder import write_edges, write_nodes
 from app.ingestion.language import IGNORE_DIRS, IGNORE_SUFFIXES
-from app.graph.builder import write_nodes, write_edges
-from .base import NodeData, EdgeData, ImportRef, ParseResult
-from .symbol_table import SymbolTable
-from .python_parser import PythonParser
-from .js_parser import JavaScriptParser
+
+from .base import EdgeData, ImportRef, NodeData, ParseResult
 from .java_parser import JavaParser
+from .js_ts_parser import JavaScriptParser
+from .python_parser import PythonParser
+from .symbol_table import SymbolTable
 
 log = logging.getLogger(__name__)
 
@@ -38,8 +41,9 @@ _PARSERS = {
 
 
 def _is_ignored(rel_path: Path) -> bool:
-    return any(part in IGNORE_DIRS for part in rel_path.parts) or \
-           any(rel_path.name.endswith(s) for s in IGNORE_SUFFIXES)
+    return any(part in IGNORE_DIRS for part in rel_path.parts) or any(
+        rel_path.name.endswith(s) for s in IGNORE_SUFFIXES
+    )
 
 
 def _collect_files(repo_root: Path) -> list[Path]:
@@ -60,11 +64,13 @@ class RepoOrchestrator:
         self.repo_id = repo_id
         self.repo_root = repo_root
 
-    async def run(self, driver: AsyncDriver, on_progress=None) -> None:
+    async def run(self, driver: AsyncDriver, on_progress=None) -> dict:
+        """Parse the repo and write to Neo4j. Returns {files, nodes, edges, seconds}."""
+        started = time.monotonic()
         files = _collect_files(self.repo_root)
         if not files:
             log.warning("repo %s: no parseable files found", self.repo_id)
-            return
+            return {"files": 0, "nodes": 0, "edges": 0, "seconds": 0.0}
 
         # ── Pass 1: parse files, build symbol table ────────────────────
         results: dict[str, ParseResult] = {}
@@ -88,7 +94,8 @@ class RepoOrchestrator:
                     pid = str(uuid.uuid4())
                     package_ids[astr] = pid
                     pkg_node = NodeData(
-                        id=pid, type="Package",
+                        id=pid,
+                        type="Package",
                         name=ancestor.name,
                         repo_id=self.repo_id,
                         file_path=astr,
@@ -121,11 +128,13 @@ class RepoOrchestrator:
             for ancestor in list(rel.parents)[:-1]:
                 astr = str(ancestor)
                 if astr in package_ids:
-                    pkg_file_edges.append(EdgeData(
-                        source_id=package_ids[astr],
-                        target_id=file_node.id,
-                        type="CONTAINS",
-                    ))
+                    pkg_file_edges.append(
+                        EdgeData(
+                            source_id=package_ids[astr],
+                            target_id=file_node.id,
+                            type="CONTAINS",
+                        )
+                    )
                     break
 
         # ── Pass 2: cross-file resolution ──────────────────────────────
@@ -136,13 +145,18 @@ class RepoOrchestrator:
         all_nodes.extend(all_file_nodes)
 
         all_edges = (
-            [e for res in results.values() for e in res.edges]
-            + pkg_file_edges
-            + cross_edges
+            [e for res in results.values() for e in res.edges] + pkg_file_edges + cross_edges
         )
 
         await write_nodes(driver, all_nodes)
         await write_edges(driver, all_edges)
+
+        return {
+            "files": len(files),
+            "nodes": len(all_nodes),
+            "edges": len(all_edges),
+            "seconds": time.monotonic() - started,
+        }
 
     # ──────────────────────────────────────────────────────────────────
     #  Cross-file resolution
@@ -166,11 +180,13 @@ class RepoOrchestrator:
                 if local_path:
                     target_file = st.get_file(local_path)
                     if target_file:
-                        edges.append(EdgeData(
-                            source_id=ref.file_node_id,
-                            target_id=target_file.id,
-                            type="IMPORTS",
-                        ))
+                        edges.append(
+                            EdgeData(
+                                source_id=ref.file_node_id,
+                                target_id=target_file.id,
+                                type="IMPORTS",
+                            )
+                        )
                 else:
                     # ExternalLib node — deduplicate by module name
                     top = ref.module_path.split(".")[0].split("/")[0]
@@ -180,17 +196,22 @@ class RepoOrchestrator:
                     else:
                         lib_id = str(uuid.uuid4())
                         lib_node = NodeData(
-                            id=lib_id, type="ExternalLib", name=top,
-                            repo_id=self.repo_id, file_path="",
+                            id=lib_id,
+                            type="ExternalLib",
+                            name=top,
+                            repo_id=self.repo_id,
+                            file_path="",
                         )
                         st.add(lib_node)
                         # Write lib node inline — small, add to results
                         results.setdefault("__external__", ParseResult()).nodes.append(lib_node)
-                    edges.append(EdgeData(
-                        source_id=ref.file_node_id,
-                        target_id=lib_id,
-                        type="IMPORTS",
-                    ))
+                    edges.append(
+                        EdgeData(
+                            source_id=ref.file_node_id,
+                            target_id=lib_id,
+                            type="IMPORTS",
+                        )
+                    )
 
             # ── EXTENDS / IMPLEMENTS resolution ───────────────────────
             for iref in res.inheritance_refs:
@@ -199,22 +220,26 @@ class RepoOrchestrator:
                     prefer_type="Interface" if iref.ref_type == "IMPLEMENTS" else "Class",
                 )
                 for tgt in targets[:1]:  # take best match
-                    edges.append(EdgeData(
-                        source_id=iref.child_node_id,
-                        target_id=tgt.id,
-                        type=iref.ref_type,
-                    ))
+                    edges.append(
+                        EdgeData(
+                            source_id=iref.child_node_id,
+                            target_id=tgt.id,
+                            type=iref.ref_type,
+                        )
+                    )
 
             # ── CALLS resolution ──────────────────────────────────────
             for cs in res.call_sites:
                 targets = st.resolve_by_name(cs.callee_name, prefer_type="Method")
                 for tgt in targets[:3]:  # cap fan-out
                     if tgt.file_path != file_path:  # cross-file only
-                        edges.append(EdgeData(
-                            source_id=cs.caller_node_id,
-                            target_id=tgt.id,
-                            type="CALLS",
-                        ))
+                        edges.append(
+                            EdgeData(
+                                source_id=cs.caller_node_id,
+                                target_id=tgt.id,
+                                type="CALLS",
+                            )
+                        )
 
         return edges
 

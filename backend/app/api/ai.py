@@ -1,17 +1,13 @@
 import asyncio
 import json
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.core import job_status
-from app.core.config import get_settings
-from app.core.db import get_driver
 from app.ai import tools
-from app.ai.embeddings import embed_repo
-from app.ai.gemini import cache_get, cache_set, sse_event, stream_cached, stream_prompt
 from app.ai.context import (
     build_impact_context,
     build_node_context,
@@ -19,7 +15,12 @@ from app.ai.context import (
     get_repo_node_names,
     match_mentioned_nodes,
 )
+from app.ai.embeddings import embed_repo
+from app.ai.gemini import cache_get, cache_set, sse_event, stream_cached, stream_prompt
 from app.ai.search import build_chat_context, semantic_search
+from app.core import job_status
+from app.core.config import get_settings
+from app.core.db import get_driver
 from app.graph.queries import get_node
 
 log = logging.getLogger(__name__)
@@ -60,12 +61,18 @@ async def search(repo_id: str, q: str):
 
 async def _stream_tool(repo_id: str, node_id: str, tool_name: str, prompt: str, driver):
     """Shared SSE generator: cache check → Gemini stream → done event with nodes+citations."""
+    log.info("AI request started: %s node=%s", tool_name, node_id)
+    started = time.monotonic()
+
     cached = cache_get(repo_id, node_id, tool_name)
     if cached:
         payload = json.loads(cached)
         async for chunk in stream_cached(payload["text"]):
             yield sse_event({"delta": chunk})
-        yield sse_event({"done": True, "nodes": payload["nodes"], "citations": payload["citations"]})
+        yield sse_event(
+            {"done": True, "nodes": payload["nodes"], "citations": payload["citations"]}
+        )
+        log.info("AI request finished: %s (cached, %d chars)", tool_name, len(payload["text"]))
         return
 
     full = ""
@@ -86,10 +93,25 @@ async def _stream_tool(repo_id: str, node_id: str, tool_name: str, prompt: str, 
     if node and node["data"].get("file_path"):
         citations.append(node["data"]["file_path"])
 
-    cache_set(repo_id, node_id, tool_name, json.dumps({
-        "text": full, "nodes": mentioned, "citations": citations,
-    }))
+    cache_set(
+        repo_id,
+        node_id,
+        tool_name,
+        json.dumps(
+            {
+                "text": full,
+                "nodes": mentioned,
+                "citations": citations,
+            }
+        ),
+    )
     yield sse_event({"done": True, "nodes": mentioned, "citations": citations})
+    log.info(
+        "AI request finished: %s (%d chars, %.1fs)",
+        tool_name,
+        len(full),
+        time.monotonic() - started,
+    )
 
 
 async def _node_repo_id(driver, node_id: str) -> tuple[dict, str]:
@@ -110,7 +132,8 @@ async def explain(node_id: str):
     prompt = tools.explain_node(ctx)
     return StreamingResponse(
         _stream_tool(repo_id, node_id, "explain", prompt, driver),
-        media_type="text/event-stream", headers=_SSE_HEADERS,
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )
 
 
@@ -125,7 +148,8 @@ async def summarize(node_id: str):
     prompt = tools.summarize_node(ctx, method_names)
     return StreamingResponse(
         _stream_tool(repo_id, node_id, "summarize", prompt, driver),
-        media_type="text/event-stream", headers=_SSE_HEADERS,
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )
 
 
@@ -137,7 +161,8 @@ async def impact(node_id: str):
     prompt = tools.impact_analysis(node_data, affected)
     return StreamingResponse(
         _stream_tool(repo_id, node_id, "impact", prompt, driver),
-        media_type="text/event-stream", headers=_SSE_HEADERS,
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )
 
 
@@ -147,7 +172,10 @@ async def chat(repo_id: str, body: ChatBody):
     settings = get_settings()
 
     context_text, hits, citations = await build_chat_context(
-        driver, repo_id, body.message, settings.repos_base_path,
+        driver,
+        repo_id,
+        body.message,
+        settings.repos_base_path,
     )
 
     # primary language from the Repo node for the prompt
@@ -164,6 +192,8 @@ async def chat(repo_id: str, body: ChatBody):
         prompt = tools.repo_question(body.message, context_text, language)
 
     async def generate():
+        log.info("AI request started: chat/%s repo=%s", body.tool, repo_id)
+        started = time.monotonic()
         full = ""
         try:
             async for delta in stream_prompt(prompt):
@@ -176,5 +206,11 @@ async def chat(repo_id: str, body: ChatBody):
         name_map = await get_repo_node_names(driver, repo_id)
         mentioned = match_mentioned_nodes(full, name_map)
         yield sse_event({"done": True, "nodes": mentioned, "citations": citations})
+        log.info(
+            "AI request finished: chat/%s (%d chars, %.1fs)",
+            body.tool,
+            len(full),
+            time.monotonic() - started,
+        )
 
     return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)

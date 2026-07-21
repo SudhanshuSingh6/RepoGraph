@@ -1,13 +1,14 @@
 from pathlib import Path
-from .base import NodeData, ImportRef
+
+from .base import ImportRef, NodeData
 
 
 class SymbolTable:
     def __init__(self, repo_root: Path):
         self._repo_root = repo_root
-        self._qualified: dict[str, NodeData] = {}   # "file_path::name" -> node
+        self._qualified: dict[str, NodeData] = {}  # "file_path::name" -> node
         self._bare: dict[str, list[NodeData]] = {}  # "name" -> [nodes...]
-        self._files: dict[str, NodeData] = {}       # rel_path -> File node
+        self._files: dict[str, NodeData] = {}  # rel_path -> File node
 
     def add(self, node: NodeData) -> None:
         key = f"{node.file_path}::{node.name}"

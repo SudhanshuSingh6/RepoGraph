@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from pathlib import Path
 
 from neo4j import AsyncDriver
@@ -20,6 +21,7 @@ def _get_model():
     global _model
     if _model is None:
         from fastembed import TextEmbedding
+
         _model = TextEmbedding(model_name=_MODEL_NAME)
     return _model
 
@@ -34,8 +36,9 @@ async def embed_query(text: str) -> list[float]:
     return vecs[0]
 
 
-def _build_embed_text(props: dict, node_type: str, parent_name: str | None,
-                      imports: list[str], source_snippet: str) -> str:
+def _build_embed_text(
+    props: dict, node_type: str, parent_name: str | None, imports: list[str], source_snippet: str
+) -> str:
     parts = [f"{node_type}: {props.get('name', '')}"]
 
     context_lines = []
@@ -70,7 +73,7 @@ def _read_source_snippet(file_cache: dict, repo_root: Path, props: dict, limit: 
         return ""
     start = int(props.get("start_line", 1)) - 1
     end = int(props.get("end_line", start + 1))
-    snippet = "\n".join(lines[max(0, start):end])
+    snippet = "\n".join(lines[max(0, start) : end])
     return snippet[:limit]
 
 
@@ -79,6 +82,7 @@ async def embed_repo(driver: AsyncDriver, repo_id: str) -> None:
     settings = get_settings()
     repo_root = Path(settings.repos_base_path) / repo_id
 
+    started = time.monotonic()
     try:
         job_status.set_embed_status(repo_id, "running")
 
@@ -117,11 +121,10 @@ async def embed_repo(driver: AsyncDriver, repo_id: str) -> None:
 
         done = 0
         for i in range(0, len(items), 64):
-            batch = items[i:i + 64]
+            batch = items[i : i + 64]
             vectors = await asyncio.to_thread(embed_texts, [it["text"] for it in batch])
             payload = [
-                {"id": it["id"], "vec": vec, "text": it["text"]}
-                for it, vec in zip(batch, vectors)
+                {"id": it["id"], "vec": vec, "text": it["text"]} for it, vec in zip(batch, vectors)
             ]
             async with driver.session() as session:
                 await session.run(
@@ -136,7 +139,12 @@ async def embed_repo(driver: AsyncDriver, repo_id: str) -> None:
             job_status.set_embed_status(repo_id, "running", done, total)
 
         job_status.set_embed_status(repo_id, "done", done, total)
-        log.info("embedded %d nodes for repo %s", done, repo_id)
+        log.info(
+            "repo %s embedded: %d nodes in %.1fs",
+            repo_id,
+            done,
+            time.monotonic() - started,
+        )
     except Exception:
         log.exception("embedding failed for repo %s", repo_id)
         job_status.set_embed_status(repo_id, "error")

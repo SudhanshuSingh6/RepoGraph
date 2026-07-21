@@ -1,27 +1,60 @@
 import uuid
 from pathlib import Path
 
-from tree_sitter import Language, Parser, Node
 import tree_sitter_java as tsjava
+from tree_sitter import Language, Node, Parser
 
-from .base import ParseResult, NodeData, EdgeData, CallSite, ImportRef, InheritanceRef
+from .base import (
+    CallSite,
+    EdgeData,
+    ImportRef,
+    InheritanceRef,
+    NodeData,
+    ParseResult,
+    classify_role,
+)
 
 _LANGUAGE = Language(tsjava.language())
 _PARSER = Parser(_LANGUAGE)
 
 _HTTP_ANNOTATIONS = {
-    "GetMapping", "PostMapping", "PutMapping", "DeleteMapping",
-    "PatchMapping", "RequestMapping",
+    "GetMapping",
+    "PostMapping",
+    "PutMapping",
+    "DeleteMapping",
+    "PatchMapping",
+    "RequestMapping",
 }
 _ANNOTATION_TO_VERB = {
-    "GetMapping": "GET", "PostMapping": "POST", "PutMapping": "PUT",
-    "DeleteMapping": "DELETE", "PatchMapping": "PATCH", "RequestMapping": "ANY",
+    "GetMapping": "GET",
+    "PostMapping": "POST",
+    "PutMapping": "PUT",
+    "DeleteMapping": "DELETE",
+    "PatchMapping": "PATCH",
+    "RequestMapping": "ANY",
+}
+
+_ANNOTATION_ROLES: dict[str, str] = {
+    "Controller": "Controller",
+    "RestController": "Controller",
+    "RequestMapping": "Controller",
+    "Service": "Service",
+    "Repository": "Repository",
+    "Component": "Utility",
+    "Configuration": "Configuration",
 }
 
 _BRANCH_TYPES = {
-    "if_statement", "else", "for_statement", "enhanced_for_statement",
-    "while_statement", "do_statement", "switch_label", "catch_clause",
-    "ternary_expression", "binary_expression",
+    "if_statement",
+    "else",
+    "for_statement",
+    "enhanced_for_statement",
+    "while_statement",
+    "do_statement",
+    "switch_label",
+    "catch_clause",
+    "ternary_expression",
+    "binary_expression",
 }
 
 
@@ -61,9 +94,13 @@ class JavaParser:
 
         file_id = str(uuid.uuid4())
         file_node = NodeData(
-            id=file_id, type="File", name=abs_path.name,
-            repo_id=repo_id, file_path=rel_path,
-            start_line=1, end_line=source.count(b"\n") + 1,
+            id=file_id,
+            type="File",
+            name=abs_path.name,
+            repo_id=repo_id,
+            file_path=rel_path,
+            start_line=1,
+            end_line=source.count(b"\n") + 1,
             properties={"language": "Java"},
         )
         result.nodes.append(file_node)
@@ -80,23 +117,44 @@ class JavaParser:
             elif t == "class_declaration":
                 self._extract_class(child, file_path, file_id, repo_id, result, node_type="Class")
             elif t == "interface_declaration":
-                self._extract_class(child, file_path, file_id, repo_id, result, node_type="Interface")
+                self._extract_class(
+                    child, file_path, file_id, repo_id, result, node_type="Interface"
+                )
             elif t == "enum_declaration":
                 self._extract_enum(child, file_path, file_id, repo_id, result)
 
     def _extract_class(
-        self, node: Node, file_path: str, file_id: str,
-        repo_id: str, result: ParseResult, node_type: str = "Class"
+        self,
+        node: Node,
+        file_path: str,
+        file_id: str,
+        repo_id: str,
+        result: ParseResult,
+        node_type: str = "Class",
     ) -> NodeData | None:
         name_node = node.child_by_field_name("name")
         if not name_node:
             return None
 
         class_id = str(uuid.uuid4())
+        class_name = _text(name_node)
+        class_annotations = _get_annotations(node)
+        role = next(
+            (r for a in class_annotations if (r := _ANNOTATION_ROLES.get(a))),
+            classify_role(class_name, file_path),
+        )
+        props: dict = {}
+        if role:
+            props["role"] = role
         class_node = NodeData(
-            id=class_id, type=node_type, name=_text(name_node),
-            repo_id=repo_id, file_path=file_path,
-            start_line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
+            id=class_id,
+            type=node_type,
+            name=class_name,
+            repo_id=repo_id,
+            file_path=file_path,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            properties=props,
         )
         result.nodes.append(class_node)
         result.edges.append(EdgeData(source_id=file_id, target_id=class_id, type="CONTAINS"))
@@ -106,18 +164,26 @@ class JavaParser:
         if superclass:
             for c in superclass.named_children:
                 if c.type == "type_identifier":
-                    result.inheritance_refs.append(InheritanceRef(
-                        child_node_id=class_id, parent_name=_text(c), ref_type="EXTENDS"
-                    ))
+                    result.inheritance_refs.append(
+                        InheritanceRef(
+                            child_node_id=class_id, parent_name=_text(c), ref_type="EXTENDS"
+                        )
+                    )
 
-        # implements
+        # implements — type_identifiers sit inside a nested type_list node
         interfaces = node.child_by_field_name("interfaces")
         if interfaces:
-            for c in interfaces.named_children:
+            stack = list(interfaces.named_children)
+            while stack:
+                c = stack.pop()
                 if c.type == "type_identifier":
-                    result.inheritance_refs.append(InheritanceRef(
-                        child_node_id=class_id, parent_name=_text(c), ref_type="IMPLEMENTS"
-                    ))
+                    result.inheritance_refs.append(
+                        InheritanceRef(
+                            child_node_id=class_id, parent_name=_text(c), ref_type="IMPLEMENTS"
+                        )
+                    )
+                else:
+                    stack.extend(c.named_children)
 
         body = node.child_by_field_name("body")
         if body:
@@ -140,16 +206,25 @@ class JavaParser:
             return
         eid = str(uuid.uuid4())
         enum_node = NodeData(
-            id=eid, type="Enum", name=_text(name_node),
-            repo_id=repo_id, file_path=file_path,
-            start_line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
+            id=eid,
+            type="Enum",
+            name=_text(name_node),
+            repo_id=repo_id,
+            file_path=file_path,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
         )
         result.nodes.append(enum_node)
         result.edges.append(EdgeData(source_id=file_id, target_id=eid, type="CONTAINS"))
 
     def _extract_method(
-        self, node: Node, file_path: str, file_id: str,
-        parent_class: NodeData | None, repo_id: str, result: ParseResult
+        self,
+        node: Node,
+        file_path: str,
+        file_id: str,
+        parent_class: NodeData | None,
+        repo_id: str,
+        result: ParseResult,
     ) -> NodeData | None:
         name_node = node.child_by_field_name("name")
         if not name_node:
@@ -161,10 +236,17 @@ class JavaParser:
 
         mid = str(uuid.uuid4())
         method_node = NodeData(
-            id=mid, type="Method", name=_text(name_node),
-            repo_id=repo_id, file_path=file_path,
-            start_line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
-            properties={"complexity": complexity, "lines": node.end_point[0] - node.start_point[0] + 1},
+            id=mid,
+            type="Method",
+            name=_text(name_node),
+            repo_id=repo_id,
+            file_path=file_path,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            properties={
+                "complexity": complexity,
+                "lines": node.end_point[0] - node.start_point[0] + 1,
+            },
         )
         result.nodes.append(method_node)
         parent_id = parent_class.id if parent_class else file_id
@@ -173,7 +255,9 @@ class JavaParser:
         # REST endpoint via annotation
         for ann in annotations:
             if ann in _HTTP_ANNOTATIONS:
-                self._create_rest_endpoint(node, ann, method_node, file_id, file_path, repo_id, result)
+                self._create_rest_endpoint(
+                    node, ann, method_node, file_id, file_path, repo_id, result
+                )
 
         if body:
             self._collect_calls(body, mid, result)
@@ -181,9 +265,14 @@ class JavaParser:
         return method_node
 
     def _create_rest_endpoint(
-        self, method_node_ast: Node, annotation: str,
-        handler: NodeData, file_id: str, file_path: str,
-        repo_id: str, result: ParseResult
+        self,
+        method_node_ast: Node,
+        annotation: str,
+        handler: NodeData,
+        file_id: str,
+        file_path: str,
+        repo_id: str,
+        result: ParseResult,
     ) -> None:
         # Try to extract path from annotation arguments
         path = "/"
@@ -207,10 +296,13 @@ class JavaParser:
         http_verb = _ANNOTATION_TO_VERB.get(annotation, "ANY")
         ep_id = str(uuid.uuid4())
         ep_node = NodeData(
-            id=ep_id, type="RestEndpoint",
+            id=ep_id,
+            type="RestEndpoint",
             name=f"{http_verb} {path}",
-            repo_id=repo_id, file_path=file_path,
-            start_line=handler.start_line, end_line=handler.end_line,
+            repo_id=repo_id,
+            file_path=file_path,
+            start_line=handler.start_line,
+            end_line=handler.end_line,
             properties={"http_method": http_verb, "path": path},
         )
         result.nodes.append(ep_node)
@@ -237,10 +329,12 @@ class JavaParser:
             if child.type == "scoped_identifier":
                 fqn = _text(child)
         if fqn:
-            result.import_refs.append(ImportRef(
-                file_node_id=file_id,
-                module_path=fqn,
-                from_module=fqn,
-                imported_names=[fqn.rsplit(".", 1)[-1]],
-                is_relative=False,
-            ))
+            result.import_refs.append(
+                ImportRef(
+                    file_node_id=file_id,
+                    module_path=fqn,
+                    from_module=fqn,
+                    imported_names=[fqn.rsplit(".", 1)[-1]],
+                    is_relative=False,
+                )
+            )

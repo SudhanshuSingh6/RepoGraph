@@ -1,21 +1,18 @@
 import re
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi import HTTPException
 
-_GITHUB_HTTPS_RE = re.compile(
-    r"^https://github\.com/[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+(\.git)?$"
-)
+_GITHUB_HTTPS_RE = re.compile(r"^https://github\.com/[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+(\.git)?$")
 
 
 def validate_github_url(url: str) -> None:
     if not _GITHUB_HTTPS_RE.match(url.rstrip("/")):
         raise HTTPException(
             status_code=422,
-            detail="URL must be a public GitHub HTTPS URL "
-                   "(https://github.com/owner/repo).",
+            detail="URL must be a public GitHub HTTPS URL (https://github.com/owner/repo).",
         )
 
 
@@ -47,9 +44,7 @@ def clone_repo(url: str, dest: Path, size_limit_mb: int) -> None:
 
 
 def _check_size(path: Path, limit_mb: int) -> None:
-    total_bytes = sum(
-        f.stat().st_size for f in path.rglob("*") if f.is_file()
-    )
+    total_bytes = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
     if total_bytes > limit_mb * 1024 * 1024:
         shutil.rmtree(path, ignore_errors=True)
         raise HTTPException(

@@ -32,16 +32,18 @@ async def get_heatmap(driver: AsyncDriver, repo_id: str) -> dict:
             n = record["n"]
             props = dict(n)
             cx = props.get("complexity")
-            nodes.append({
-                "id":        props.get("id", ""),
-                "name":      props.get("name", ""),
-                "type":      list(n.labels)[0] if n.labels else "Node",
-                "file_path": props.get("file_path", ""),
-                "complexity": cx,
-                "lines":     props.get("lines"),
-                "fan_in":    record["fan_in"],
-                "fan_out":   record["fan_out"],
-                "risk":      _risk(cx),
-            })
+            nodes.append(
+                {
+                    "id": props.get("id", ""),
+                    "name": props.get("name", ""),
+                    "type": list(n.labels)[0] if n.labels else "Node",
+                    "file_path": props.get("file_path", ""),
+                    "complexity": cx,
+                    "lines": props.get("lines"),
+                    "fan_in": record["fan_in"],
+                    "fan_out": record["fan_out"],
+                    "risk": _risk(cx),
+                }
+            )
 
     return {"nodes": nodes}

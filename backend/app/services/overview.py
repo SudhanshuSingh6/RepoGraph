@@ -1,4 +1,5 @@
 import math
+
 from neo4j import AsyncDriver
 
 
@@ -21,7 +22,8 @@ async def get_metrics(driver: AsyncDriver, repo_id: str) -> dict:
         base = dict(row) if row else {}
 
         imports_r = await session.run(
-            "MATCH (a:Node {repo_id:$id})-[r:IMPORTS]->(b:Node {repo_id:$id}) RETURN count(r) AS cnt",
+            "MATCH (a:Node {repo_id:$id})-[r:IMPORTS]->(b:Node {repo_id:$id}) "
+            "RETURN count(r) AS cnt",
             id=repo_id,
         )
         imports_row = await imports_r.single()
@@ -46,14 +48,14 @@ async def get_metrics(driver: AsyncDriver, repo_id: str) -> dict:
         cycles_count = cycles_row["cnt"] if cycles_row else 0
 
     return {
-        "packages":     base.get("packages", 0),
-        "files":        base.get("files", 0),
-        "classes":      base.get("classes", 0),
-        "methods":      base.get("methods", 0),
+        "packages": base.get("packages", 0),
+        "files": base.get("files", 0),
+        "classes": base.get("classes", 0),
+        "methods": base.get("methods", 0),
         "external_deps": base.get("external_deps", 0),
-        "imports":      imports_count,
-        "calls":        calls_count,
-        "cycles":       cycles_count,
+        "imports": imports_count,
+        "calls": calls_count,
+        "cycles": cycles_count,
     }
 
 
@@ -69,7 +71,8 @@ async def get_overview(driver: AsyncDriver, repo_id: str) -> dict:
               count(CASE WHEN n:Class       THEN 1 END) AS classes,
               count(CASE WHEN n:Method      THEN 1 END) AS methods,
               count(CASE WHEN n:ExternalLib THEN 1 END) AS external_deps,
-              avg(CASE WHEN n:Method AND n.complexity IS NOT NULL THEN toFloat(n.complexity) END) AS avg_complexity
+              avg(CASE WHEN n:Method AND n.complexity IS NOT NULL
+                  THEN toFloat(n.complexity) END) AS avg_complexity
             """,
             id=repo_id,
         )
@@ -105,7 +108,9 @@ async def get_overview(driver: AsyncDriver, repo_id: str) -> dict:
         )
         largest_packages = []
         async for record in pkgs_r:
-            largest_packages.append({"name": record["name"], "id": record["id"], "file_count": record["file_count"]})
+            largest_packages.append(
+                {"name": record["name"], "id": record["id"], "file_count": record["file_count"]}
+            )
 
         # 4. Most connected classes
         classes_r = await session.run(
@@ -119,7 +124,9 @@ async def get_overview(driver: AsyncDriver, repo_id: str) -> dict:
         )
         most_connected = []
         async for record in classes_r:
-            most_connected.append({"name": record["name"], "id": record["id"], "edge_count": record["edge_count"]})
+            most_connected.append(
+                {"name": record["name"], "id": record["id"], "edge_count": record["edge_count"]}
+            )
 
         # 5. High complexity methods (for warnings)
         high_cx_r = await session.run(
@@ -185,25 +192,24 @@ async def get_overview(driver: AsyncDriver, repo_id: str) -> dict:
     most_conn = most_connected[0] if most_connected else {"name": "—", "edge_count": 0}
 
     health, warnings = _compute_health(
-        avg_complexity, cycle_count, largest_pkg.get("file_count", 0),
-        high_cx, high_fan_out
+        avg_complexity, cycle_count, largest_pkg.get("file_count", 0), high_cx, high_fan_out
     )
 
     return {
-        "total_packages":     totals.get("packages", 0),
-        "total_files":        totals.get("files", 0),
-        "total_classes":      totals.get("classes", 0),
-        "total_methods":      totals.get("methods", 0),
+        "total_packages": totals.get("packages", 0),
+        "total_files": totals.get("files", 0),
+        "total_classes": totals.get("classes", 0),
+        "total_methods": totals.get("methods", 0),
         "total_external_deps": totals.get("external_deps", 0),
-        "avg_complexity":     round(avg_complexity, 1),
-        "largest_package":    largest_pkg,
+        "avg_complexity": round(avg_complexity, 1),
+        "largest_package": largest_pkg,
         "most_connected_class": most_conn,
-        "health":             health,
-        "warnings":           warnings,
+        "health": health,
+        "warnings": warnings,
         "charts": {
             "node_type_distribution": node_type_distribution,
             "complexity_distribution": complexity_dist,
-            "largest_packages":       largest_packages,
+            "largest_packages": largest_packages,
             "most_connected_classes": most_connected,
         },
     }

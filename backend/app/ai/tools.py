@@ -8,42 +8,47 @@ Describe its responsibility, collaborators, lifecycle, and where it fits in the 
 Avoid repeating the source code verbatim. When you mention a class or method name from the
 collaborators list, write it in **bold** exactly as shown.
 
-{node.get('type', 'Node')}: {node.get('label') or node.get('name', '')}
-File: {node.get('file_path', 'unknown')}
-Complexity: {node.get('complexity', 'N/A')}, LOC: {node.get('lines', 'N/A')}
+{node.get("type", "Node")}: {node.get("label") or node.get("name", "")}
+File: {node.get("file_path", "unknown")}
+Complexity: {node.get("complexity", "N/A")}, LOC: {node.get("lines", "N/A")}
 
 Source:
-```{ctx['language']}
-{ctx['source'][:1500]}
+```{ctx["language"]}
+{ctx["source"][:1500]}
 ```
 
 Collaborators:
-- Called by: {', '.join(ctx['used_by'][:5]) or 'none'}
-- Calls: {', '.join(ctx['calls'][:5]) or 'none'}
-- Imports: {', '.join(ctx['imports'][:5]) or 'none'}
+- Called by: {", ".join(ctx["used_by"][:5]) or "none"}
+- Calls: {", ".join(ctx["calls"][:5]) or "none"}
+- Imports: {", ".join(ctx["imports"][:5]) or "none"}
 """
 
 
 def summarize_node(ctx: dict, method_names: list[str]) -> str:
     node = ctx["node"]
-    return f"""Summarize the responsibilities of {node.get('label') or node.get('name', '')} ({node.get('type', 'Node')}) in 3-5 bullet points.
+    name = node.get("label") or node.get("name", "")
+    ntype = node.get("type", "Node")
+    return f"""Summarize the responsibilities of {name} ({ntype}) in 3-5 bullet points.
 Be specific about what it DOES, not what it contains.
 Each bullet must start with a verb. Do not say "contains" or "has".
 When you mention a method name, write it in **bold** exactly as shown.
 
-Methods: {', '.join(method_names[:10]) or 'none listed'}
+Methods: {", ".join(method_names[:10]) or "none listed"}
 Source:
-```{ctx['language']}
-{ctx['source'][:2000]}
+```{ctx["language"]}
+{ctx["source"][:2000]}
 ```
 """
 
 
 def impact_analysis(node: dict, affected: list[dict]) -> str:
-    affected_lines = "\n".join(
-        f"- {a['name']} ({a['type']}) — {a.get('file_path', '')}" for a in affected
-    ) or "- (no callers or importers found)"
-    return f"""A developer is about to modify {node.get('label') or node.get('name', '')} ({node.get('type', 'Node')}).
+    affected_lines = (
+        "\n".join(f"- {a['name']} ({a['type']}) — {a.get('file_path', '')}" for a in affected)
+        or "- (no callers or importers found)"
+    )
+    name = node.get("label") or node.get("name", "")
+    ntype = node.get("type", "Node")
+    return f"""A developer is about to modify {name} ({ntype}).
 In 2-3 sentences, describe the change risk and which systems will be affected.
 Then list the specific affected components by name, one per line, each name in **bold**.
 

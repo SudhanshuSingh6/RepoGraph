@@ -19,12 +19,14 @@ async def get_dependencies(driver: AsyncDriver, node_id: str) -> dict:
         )
         used_by = []
         async for record in used_by_r:
-            used_by.append({
-                "name": record["name"],
-                "id":   record["id"],
-                "type": record["type"] or "Node",
-                "rel":  record["rel"],
-            })
+            used_by.append(
+                {
+                    "name": record["name"],
+                    "id": record["id"],
+                    "type": record["type"] or "Node",
+                    "rel": record["rel"],
+                }
+            )
 
         depends_on_r = await session.run(
             """
@@ -40,11 +42,13 @@ async def get_dependencies(driver: AsyncDriver, node_id: str) -> dict:
         )
         depends_on = []
         async for record in depends_on_r:
-            depends_on.append({
-                "name": record["name"],
-                "id":   record["id"],
-                "type": record["type"] or "Node",
-                "rel":  record["rel"],
-            })
+            depends_on.append(
+                {
+                    "name": record["name"],
+                    "id": record["id"],
+                    "type": record["type"] or "Node",
+                    "rel": record["rel"],
+                }
+            )
 
     return {"used_by": used_by, "depends_on": depends_on}

@@ -5,7 +5,15 @@ import tree_sitter_javascript as tsjavascript
 import tree_sitter_typescript as tstypescript
 from tree_sitter import Language, Node, Parser
 
-from .base import CallSite, EdgeData, ImportRef, InheritanceRef, NodeData, ParseResult
+from .base import (
+    CallSite,
+    EdgeData,
+    ImportRef,
+    InheritanceRef,
+    NodeData,
+    ParseResult,
+    classify_role,
+)
 
 _JS = Language(tsjavascript.language())
 _TS = Language(tstypescript.language_typescript())
@@ -30,6 +38,20 @@ _BRANCH_TYPES = {
     "logical_expression",
 }
 
+# NestJS / Angular decorator → architectural role
+_DECORATOR_ROLE_MAP: dict[str, str] = {
+    "Controller": "Controller",
+    "Injectable": "Service",
+    "InjectRepository": "Repository",
+    "Repository": "Repository",
+    "Module": "Configuration",
+    "Middleware": "Middleware",
+    "Guard": "Middleware",
+    "Interceptor": "Middleware",
+    "Pipe": "Middleware",
+    # React: @Component is ambiguous — fall through to path-based classification
+}
+
 
 def _text(node: Node | None) -> str:
     return node.text.decode("utf-8", errors="replace") if node else ""
@@ -45,9 +67,61 @@ def _count_branches(node: Node) -> int:
 def _get_parser(suffix: str) -> Parser:
     if suffix == ".tsx":
         return _TSX_PARSER
-    if suffix in (".ts",):
+    if suffix == ".ts":
         return _TS_PARSER
     return _JS_PARSER
+
+
+def _collect_decorator_name(dec: Node, out: list[str]) -> None:
+    """Extract the decorator identifier from a decorator node."""
+    for child in dec.children:
+        if child.type == "identifier":
+            out.append(_text(child))
+            return
+        if child.type == "call_expression":
+            func = child.child_by_field_name("function")
+            if func:
+                if func.type == "identifier":
+                    out.append(_text(func))
+                elif func.type == "member_expression":
+                    prop = func.child_by_field_name("property")
+                    if prop:
+                        out.append(_text(prop))
+            return
+
+
+def _class_decorators(class_node: Node) -> list[str]:
+    """Return decorator names for a class_declaration node.
+
+    Handles three tree-sitter layouts:
+      1. Decorators embedded as named children of the class node itself.
+      2. Decorators as preceding siblings of the class node.
+      3. Decorators as preceding siblings of a wrapping export_statement.
+    """
+    names: list[str] = []
+
+    # Layout 1: decorator children of the class node
+    for child in class_node.named_children:
+        if child.type == "decorator":
+            _collect_decorator_name(child, names)
+
+    # Layout 2: preceding decorator siblings
+    if not names:
+        sibling = class_node.prev_sibling
+        while sibling and sibling.type == "decorator":
+            _collect_decorator_name(sibling, names)
+            sibling = sibling.prev_sibling
+
+    # Layout 3: decorator siblings of a wrapping export_statement
+    if not names:
+        parent = class_node.parent
+        if parent and parent.type == "export_statement":
+            sibling = parent.prev_sibling
+            while sibling and sibling.type == "decorator":
+                _collect_decorator_name(sibling, names)
+                sibling = sibling.prev_sibling
+
+    return names
 
 
 class JavaScriptParser:
@@ -135,15 +209,29 @@ class JavaScriptParser:
         if not name_node:
             return None
 
+        class_name = _text(name_node)
+
+        # Role: decorator annotation wins, then name-suffix / path heuristics
+        decorators = _class_decorators(node)
+        role: str | None = next(
+            (r for d in decorators if (r := _DECORATOR_ROLE_MAP.get(d))),
+            classify_role(class_name, file_path),
+        )
+
+        props: dict = {}
+        if role:
+            props["role"] = role
+
         class_id = str(uuid.uuid4())
         class_node = NodeData(
             id=class_id,
             type="Class",
-            name=_text(name_node),
+            name=class_name,
             repo_id=repo_id,
             file_path=file_path,
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
+            properties=props,
         )
         result.nodes.append(class_node)
         result.edges.append(EdgeData(source_id=file_id, target_id=class_id, type="CONTAINS"))

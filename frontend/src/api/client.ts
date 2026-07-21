@@ -176,6 +176,18 @@ export interface StatusResponse {
   progress?: string;
 }
 
+import { toast } from "../components/Toast";
+
+async function extractError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    // FastAPI HTTPException uses `detail`; our global handlers use `error`
+    return data.detail || data.error || `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
 async function streamSSE(
   path: string,
   body: unknown,
@@ -187,8 +199,9 @@ async function streamSSE(
     body: body != null ? JSON.stringify(body) : undefined,
   });
   if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => res.statusText);
-    onError?.(text || `HTTP ${res.status}`);
+    const message = await extractError(res);
+    toast(message, "error");
+    onError?.(message);
     return;
   }
 
@@ -220,8 +233,9 @@ async function streamSSE(
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
+    const message = await extractError(res);
+    toast(message, "error");
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }

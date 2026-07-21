@@ -1,10 +1,12 @@
 from neo4j import AsyncDriver
 
-from app.ai.embeddings import embed_query
 from app.ai.context import build_node_context, estimate_tokens
+from app.ai.embeddings import embed_query
 
 
-async def semantic_search(driver: AsyncDriver, repo_id: str, query_text: str, k: int = 10) -> list[dict]:
+async def semantic_search(
+    driver: AsyncDriver, repo_id: str, query_text: str, k: int = 10
+) -> list[dict]:
     vector = await embed_query(query_text)
 
     async with driver.session() as session:
@@ -21,27 +23,34 @@ async def semantic_search(driver: AsyncDriver, repo_id: str, query_text: str, k:
                    score
             ORDER BY score DESC
             """,
-            k=k * 3, embedding=vector, repo_id=repo_id,
+            k=k * 3,
+            embedding=vector,
+            repo_id=repo_id,
         )
         results = []
         async for r in result:
             if len(results) >= k:
                 break
             preview = (r["embed_text"] or "")[:120].replace("\n\n", " · ").replace("\n", " ")
-            results.append({
-                "id": r["id"],
-                "name": r["name"],
-                "type": r["type"] or "Node",
-                "file_path": r["file_path"] or "",
-                "score": round(r["score"], 3),
-                "preview": preview,
-            })
+            results.append(
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "type": r["type"] or "Node",
+                    "file_path": r["file_path"] or "",
+                    "score": round(r["score"], 3),
+                    "preview": preview,
+                }
+            )
         return results
 
 
 async def build_chat_context(
-    driver: AsyncDriver, repo_id: str, question: str,
-    repos_base: str, max_tokens: int = 4000,
+    driver: AsyncDriver,
+    repo_id: str,
+    question: str,
+    repos_base: str,
+    max_tokens: int = 4000,
 ) -> tuple[str, list[dict], list[str]]:
     """Token-budget GraphRAG context. Returns (context_text, hit_nodes, citations)."""
     hits = await semantic_search(driver, repo_id, question, k=10)

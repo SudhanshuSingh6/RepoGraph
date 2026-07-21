@@ -1,8 +1,17 @@
 from pathlib import Path
 
 IGNORE_DIRS = {
-    "node_modules", ".git", "dist", "build", "__pycache__",
-    "vendor", ".venv", "venv", ".tox", "coverage", ".nyc_output",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "__pycache__",
+    "vendor",
+    ".venv",
+    "venv",
+    ".tox",
+    "coverage",
+    ".nyc_output",
 }
 
 IGNORE_SUFFIXES = {".min.js", ".min.css", ".map", ".lock"}

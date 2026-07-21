@@ -11,4 +11,10 @@ tree-sitter-javascript>=0.23
 tree-sitter-typescript>=0.23
 tree-sitter-java>=0.23
 fastembed>=0.3.6
-google-generativeai>=0.7.0
+google-genai>=1.0
+
+# dev
+ruff
+pytest
+pytest-asyncio
+pre-commit

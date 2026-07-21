@@ -28,4 +28,6 @@ def set_embed_status(repo_id: str, status: str, nodes_embedded: int = 0, total: 
 
 def get_embed_status(repo_id: str) -> dict:
     with _lock:
-        return _store.get(f"{repo_id}:embed", {"status": "pending", "nodes_embedded": 0, "total": 0})
+        return _store.get(
+            f"{repo_id}:embed", {"status": "pending", "nodes_embedded": 0, "total": 0}
+        )

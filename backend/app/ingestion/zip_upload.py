@@ -1,5 +1,5 @@
-import zipfile
 import shutil
+import zipfile
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -22,11 +22,28 @@ def safe_extract(zip_path: Path, dest: Path, size_limit_mb: int) -> None:
         raise
 
 
+_MAX_FILE_COUNT = 20_000  # zip-bomb guard
+
+
 def _validate_members(zf: zipfile.ZipFile, dest: Path, limit_bytes: int) -> None:
     total = 0
     dest_resolved = dest.resolve()
 
-    for info in zf.infolist():
+    infolist = zf.infolist()
+    if len(infolist) > _MAX_FILE_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ZIP contains too many files (max {_MAX_FILE_COUNT}).",
+        )
+
+    for info in infolist:
+        # Reject symlinks (mode stored in high bits of external_attr)
+        if (info.external_attr >> 16) & 0o170000 == 0o120000:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Symlinks not allowed in ZIP: {info.filename!r}",
+            )
+
         # Reject absolute paths and traversal sequences
         if info.filename.startswith("/") or ".." in info.filename:
             raise HTTPException(
@@ -46,5 +63,5 @@ def _validate_members(zf: zipfile.ZipFile, dest: Path, limit_bytes: int) -> None
         if total > limit_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"ZIP contents exceed the size limit.",
+                detail="ZIP contents exceed the size limit.",
             )

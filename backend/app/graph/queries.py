@@ -1,9 +1,14 @@
 from pathlib import Path
+
 from neo4j import AsyncDriver
 
 _EXT_TO_LANG = {
-    ".py": "python", ".js": "javascript", ".jsx": "javascript",
-    ".ts": "typescript", ".tsx": "typescript", ".java": "java",
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".java": "java",
 }
 
 
@@ -14,7 +19,7 @@ def _node_to_cy(record) -> dict:
         "data": {
             "id": props.get("id", ""),
             "label": props.get("name", ""),
-            "type": next((l for l in n.labels if l != "Node"), props.get("type", "")),
+            "type": next((lbl for lbl in n.labels if lbl != "Node"), props.get("type", "")),
             **{k: v for k, v in props.items() if k not in ("id",)},
         }
     }
@@ -61,6 +66,7 @@ async def get_children(driver: AsyncDriver, parent_id: str) -> dict:
             """
             MATCH (p:Node {id: $id})-[:CONTAINS]->(c)
             RETURN c
+            LIMIT 200
             """,
             id=parent_id,
         )
@@ -127,7 +133,7 @@ async def get_node_source(driver: AsyncDriver, node_id: str, repos_base: str) ->
         return None
 
     # start_line/end_line are 1-indexed
-    snippet = "\n".join(lines[max(0, start_line - 1): end_line])
+    snippet = "\n".join(lines[max(0, start_line - 1) : end_line])
     lang = _EXT_TO_LANG.get(Path(file_path).suffix.lower(), "plaintext")
 
     return {

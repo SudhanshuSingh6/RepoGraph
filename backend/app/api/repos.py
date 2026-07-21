@@ -1,19 +1,21 @@
-import uuid
+import logging
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from neo4j.exceptions import ServiceUnavailable
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.core.db import get_driver
-from app.ingestion.clone import validate_github_url, clone_repo
-from app.ingestion.zip_upload import safe_extract
-from app.ingestion.language import detect_language
 from app.graph.repos import create_repo_node
+from app.ingestion.clone import clone_repo, validate_github_url
+from app.ingestion.language import detect_language
+from app.ingestion.zip_upload import safe_extract
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/repos", tags=["repos"])
 
 
@@ -41,6 +43,7 @@ async def clone(
     dest = Path(settings.repos_base_path) / repo_id
 
     clone_repo(body.url, dest, settings.repo_size_limit_mb)
+    log.info("repo cloned: %s (%s)", name, repo_id)
 
     lang_info = detect_language(dest)
 
@@ -60,7 +63,7 @@ async def clone(
         raise HTTPException(
             status_code=503,
             detail=f"Cannot reach Neo4j at {settings.neo4j_uri} — is it running? "
-                   "Try: docker compose up -d neo4j",
+            "Try: docker compose up -d neo4j",
         )
 
     return RepoResponse(
@@ -101,6 +104,7 @@ async def upload(
         safe_extract(tmp_path, dest, settings.repo_size_limit_mb)
     finally:
         tmp_path.unlink(missing_ok=True)
+    log.info("zip extracted: %s (%s)", name, repo_id)
 
     lang_info = detect_language(dest)
 
@@ -120,7 +124,7 @@ async def upload(
         raise HTTPException(
             status_code=503,
             detail=f"Cannot reach Neo4j at {settings.neo4j_uri} — is it running? "
-                   "Try: docker compose up -d neo4j",
+            "Try: docker compose up -d neo4j",
         )
 
     return RepoResponse(
