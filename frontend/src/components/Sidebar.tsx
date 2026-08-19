@@ -1,6 +1,7 @@
 import { RefObject, useRef, useState } from "react";
 import { api, HeatmapNode, SearchResult } from "../api/client";
 import { GraphCanvasHandle } from "./GraphCanvas";
+import { ARCH_LAYER_LIST, NODE_TYPE_COLORS } from "../lib/nodeIcons";
 
 const NODE_TYPES = [
   "Package", "File", "Class", "Interface",
@@ -8,12 +9,6 @@ const NODE_TYPES = [
 ];
 
 const EDGE_TYPES = ["CONTAINS", "CALLS", "IMPORTS", "EXTENDS", "IMPLEMENTS"];
-
-const NODE_COLORS: Record<string, string> = {
-  Package: "#3B82F6", File: "#64748B", Class: "#22C55E",
-  Interface: "#14B8A6", Enum: "#EAB308", Method: "#A855F7",
-  RestEndpoint: "#F97316", ExternalLib: "#6B7280",
-};
 
 const EDGE_COLORS: Record<string, string> = {
   CONTAINS: "#94A3B8", CALLS: "#3B82F6",
@@ -47,6 +42,9 @@ export default function Sidebar({ repoId, canvasRef, onCyclesOpen, onEndpointsOp
   const [edgeVisible, setEdgeVisible] = useState<Record<string, boolean>>(
     Object.fromEntries(EDGE_TYPES.map((t) => [t, t === "CONTAINS"]))
   );
+  const [roleVisible, setRoleVisible] = useState<Record<string, boolean>>(
+    Object.fromEntries(ARCH_LAYER_LIST.map(({ role }) => [role, true]))
+  );
   const [heatmapActive, setHeatmapActive] = useState(false);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -76,6 +74,13 @@ export default function Sidebar({ repoId, canvasRef, onCyclesOpen, onEndpointsOp
     setNodeVisible((p) => ({ ...p, [type]: next }));
     if (next) canvasRef.current?.showType(type);
     else canvasRef.current?.hideType(type);
+  }
+
+  function toggleRole(role: string) {
+    const next = !roleVisible[role];
+    setRoleVisible((p) => ({ ...p, [role]: next }));
+    if (next) canvasRef.current?.showRole(role);
+    else canvasRef.current?.hideRole(role);
   }
 
   function toggleEdge(type: string) {
@@ -150,8 +155,27 @@ export default function Sidebar({ repoId, canvasRef, onCyclesOpen, onEndpointsOp
               onChange={() => toggleNode(t)}
               className="accent-blue-500"
             />
-            <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: NODE_COLORS[t] }} />
+            <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: NODE_TYPE_COLORS[t] }} />
             <span className="text-sm text-gray-300 group-hover:text-white">{t}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* Architecture roles */}
+      <div className="px-3 py-3 border-b border-gray-800">
+        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Architecture</p>
+        {ARCH_LAYER_LIST.map(({ role, color, icon }) => (
+          <label key={role} className="flex items-center gap-2 py-0.5 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={roleVisible[role]}
+              onChange={() => toggleRole(role)}
+              className="accent-blue-500"
+            />
+            <span className="flex items-center justify-center w-4 h-4 rounded flex-shrink-0" style={{ background: color }}>
+              <img src={icon} className="w-2.5 h-2.5" alt="" />
+            </span>
+            <span className="text-sm text-gray-300 group-hover:text-white">{role}</span>
           </label>
         ))}
       </div>

@@ -4,18 +4,37 @@ import {
   useImperativeHandle,
   forwardRef,
   useCallback,
+  useState,
 } from "react";
 import cytoscape, { Core, ElementDefinition } from "cytoscape";
 // @ts-ignore — no bundled types for fcose
 import fcose from "cytoscape-fcose";
+// @ts-ignore — no bundled types for cytoscape-dagre
+import dagre from "cytoscape-dagre";
 import { CyGraph, HeatmapNode } from "../api/client";
+import { getNodeBgColor, getNodeIcon } from "../lib/nodeIcons";
 
 cytoscape.use(fcose);
+cytoscape.use(dagre);
+
+function inferRoots(cy: Core): cytoscape.NodeCollection {
+  const visible = cy.nodes(":visible");
+  let roots = visible.filter('[type = "Package"]');
+  if (roots.length) return roots;
+  roots = visible.filter('[type = "File"]');
+  if (roots.length) return roots;
+  roots = visible.filter('[role = "Controller"]');
+  if (roots.length) return roots;
+  roots = visible.filter((n: cytoscape.NodeSingular) => n.indegree(false) === 0);
+  return roots.length ? roots : visible;
+}
 
 export interface GraphCanvasHandle {
   addElements: (graph: CyGraph) => void;
   hideType: (type: string) => void;
   showType: (type: string) => void;
+  hideRole: (role: string) => void;
+  showRole: (role: string) => void;
   toggleEdgeType: (type: string, visible: boolean) => void;
   fit: () => void;
   panToNode: (nodeId: string) => void;
@@ -25,17 +44,6 @@ export interface GraphCanvasHandle {
   clearHighlights: () => void;
   flashNode: (nodeId: string) => void;
 }
-
-const NODE_COLORS: Record<string, string> = {
-  Package: "#3B82F6",
-  File: "#64748B",
-  Class: "#22C55E",
-  Interface: "#14B8A6",
-  Enum: "#EAB308",
-  Method: "#A855F7",
-  RestEndpoint: "#F97316",
-  ExternalLib: "#6B7280",
-};
 
 const EDGE_COLORS: Record<string, string> = {
   CALLS: "#3B82F6",
@@ -59,24 +67,52 @@ const STYLE: cytoscape.StylesheetStyle[] = [
     style: {
       label: "data(label)",
       "font-size": 11,
-      color: "#fff",
-      "text-valign": "center",
+      color: "#cbd5e1",
+      "text-valign": "bottom",
       "text-halign": "center",
+      "text-margin-y": 6,
       "background-color": (ele: cytoscape.NodeSingular) =>
-        NODE_COLORS[ele.data("type")] ?? "#6B7280",
-      width: 40,
-      height: 40,
+        getNodeBgColor(ele.data("type"), ele.data("role")),
+      "background-image": (ele: cytoscape.NodeSingular) =>
+        getNodeIcon(ele.data("type"), ele.data("role")),
+      "background-width": "60%",
+      "background-height": "60%",
+      "background-fit": "none" as "none",
+      "background-clip": "node" as "node",
+      width: 52,
+      height: 52,
       "border-width": 2,
       "border-color": "#1e293b",
       "text-wrap": "ellipsis",
       "text-max-width": "80px",
+      "transition-property": "border-color, border-width, width, height, background-width, background-height",
+      "transition-duration": 150,
+      "transition-timing-function": "ease-in-out" as "ease-in-out",
+    } as cytoscape.Css.Node,
+  },
+  {
+    selector: "node:hover",
+    style: {
+      "border-color": "#94a3b8",
+      "border-width": 3,
+      "background-width": "68%",
+      "background-height": "68%",
     } as cytoscape.Css.Node,
   },
   {
     selector: "node:selected",
     style: {
-      "border-color": "#fff",
-      "border-width": 3,
+      "border-color": (ele: cytoscape.NodeSingular) =>
+        getNodeBgColor(ele.data("type"), ele.data("role")),
+      "border-width": 4,
+      "shadow-blur": 22,
+      "shadow-color": (ele: cytoscape.NodeSingular) =>
+        getNodeBgColor(ele.data("type"), ele.data("role")),
+      "shadow-opacity": 0.75,
+      width: 57,
+      height: 57,
+      "background-width": "65%",
+      "background-height": "65%",
     } as cytoscape.Css.Node,
   },
   {
@@ -107,6 +143,8 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
     const tooltipRef = useRef<HTMLDivElement>(null);
     const heatmapDataRef = useRef<Map<string, HeatmapNode>>(new Map());
     const heatmapActiveRef = useRef(false);
+    const [layoutMode, setLayoutMode] = useState<"force" | "tree">("force");
+    const layoutModeRef = useRef<"force" | "tree">("force");
 
     const runLayout = useCallback((cy: Core, fit = false) => {
       cy.layout({
@@ -119,6 +157,26 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         randomize: false,
         nodeRepulsion: 8000,
         idealEdgeLength: 100,
+      } as Parameters<Core["layout"]>[0]).run();
+    }, []);
+
+    const runTreeLayout = useCallback((cy: Core, fit = false) => {
+      const roots = inferRoots(cy);
+      cy.layout({
+        name: "dagre",
+        // @ts-ignore
+        rankDir: "TB",
+        ranker: "network-simplex",
+        animate: true,
+        animationDuration: 500,
+        fit,
+        padding: 60,
+        nodeSep: 50,
+        rankSep: 80,
+        edgeSep: 10,
+        roots,
+        avoidOverlap: true,
+        nodeDimensionsIncludeLabels: true,
       } as Parameters<Core["layout"]>[0]).run();
     }, []);
 
@@ -211,7 +269,8 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         added.nodes().style({ opacity: 0 });
         added.nodes().animate({ style: { opacity: 1 } }, { duration: 300 });
 
-        runLayout(cy, false);
+        if (layoutModeRef.current === "tree") runTreeLayout(cy, false);
+        else runLayout(cy, false);
       },
 
       hideType(type: string) {
@@ -222,6 +281,16 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
       showType(type: string) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (cyRef.current?.nodes(`[type = "${type}"]`) as any)?.show();
+      },
+
+      hideRole(role: string) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (cyRef.current?.nodes(`[role = "${role}"]`) as any)?.hide();
+      },
+
+      showRole(role: string) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (cyRef.current?.nodes(`[role = "${role}"]`) as any)?.show();
       },
 
       toggleEdgeType(type: string, visible: boolean) {
@@ -308,6 +377,50 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
     return (
       <div className="relative w-full h-full bg-gray-950">
         <div ref={containerRef} className="w-full h-full" />
+
+        {/* Zoom + layout controls */}
+        <div className="absolute top-4 left-4 flex flex-col gap-1 z-10">
+          <button
+            onClick={() => cyRef.current?.zoom({ level: (cyRef.current.zoom() * 1.3), renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } })}
+            className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 text-lg leading-none select-none"
+            title="Zoom in"
+          >+</button>
+          <button
+            onClick={() => cyRef.current?.zoom({ level: (cyRef.current.zoom() / 1.3), renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } })}
+            className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 text-lg leading-none select-none"
+            title="Zoom out"
+          >−</button>
+          <button
+            onClick={() => cyRef.current?.fit(undefined, 40)}
+            className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 text-xs leading-none select-none"
+            title="Fit to screen"
+          >⤢</button>
+          <div className="h-px bg-gray-700 my-0.5" />
+          <button
+            onClick={() => {
+              layoutModeRef.current = "force";
+              setLayoutMode("force");
+              const cy = cyRef.current;
+              if (cy) runLayout(cy, true);
+            }}
+            className={`w-8 h-8 flex items-center justify-center rounded border text-sm leading-none select-none transition-colors ${
+              layoutMode === "force" ? "bg-blue-700 border-blue-600 text-white" : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300"
+            }`}
+            title="Force layout"
+          >🌐</button>
+          <button
+            onClick={() => {
+              layoutModeRef.current = "tree";
+              setLayoutMode("tree");
+              const cy = cyRef.current;
+              if (cy) runTreeLayout(cy, true);
+            }}
+            className={`w-8 h-8 flex items-center justify-center rounded border text-sm leading-none select-none transition-colors ${
+              layoutMode === "tree" ? "bg-blue-700 border-blue-600 text-white" : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300"
+            }`}
+            title="Tree layout (dagre)"
+          >🌳</button>
+        </div>
 
         {/* Heatmap tooltip */}
         <div

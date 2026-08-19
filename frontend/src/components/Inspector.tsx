@@ -5,6 +5,7 @@ import { api, DependenciesResponse, MentionedNode, SourceResult } from "../api/c
 import { GraphCanvasHandle } from "./GraphCanvas";
 import { CyGraph } from "../api/client";
 import DependencyPanel from "./DependencyPanel";
+import { ARCH_COLORS, getNodeIcon } from "../lib/nodeIcons";
 
 const TYPE_COLORS: Record<string, string> = {
   Package: "bg-blue-600", File: "bg-slate-600", Class: "bg-green-600",
@@ -16,6 +17,7 @@ interface NodeData {
   id: string;
   label: string;
   type: string;
+  role?: string;
   file_path?: string;
   complexity?: number;
   lines?: number;
@@ -133,6 +135,15 @@ export default function Inspector({ nodeId, canvasRef, onClose }: Props) {
                 <span className={`text-xs px-2 py-0.5 rounded font-medium text-white ${TYPE_COLORS[node.type] ?? "bg-gray-600"}`}>
                   {node.type}
                 </span>
+                {node.role && (
+                  <span
+                    className="text-xs px-2 py-0.5 rounded font-medium text-white flex items-center gap-1"
+                    style={{ background: ARCH_COLORS[node.role] ?? "#6B7280" }}
+                  >
+                    <img src={getNodeIcon(node.type, node.role)} className="w-3 h-3" alt="" />
+                    {node.role}
+                  </span>
+                )}
               </div>
               <h3 className="text-sm font-semibold text-white truncate">{node.label}</h3>
               {node.file_path && (
