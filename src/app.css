@@ -1,0 +1,99 @@
+/* Design tokens — repograph-spec.md §2 */
+:root {
+	--bg: #e3ecea;
+	--panel: #f4f8f7;
+	--panel2: #e8f0ee;
+	--ink: #0e2b33;
+	--muted: #557077;
+	--line: #c1d2cf;
+	--accent: #d81e6f;
+	--blast: #c8660a;
+	--neutral: #b9cac8;
+	--folder: rgba(14, 43, 51, 0.045);
+	--edge: rgba(14, 43, 51, 0.34);
+	--grid: rgba(14, 43, 51, 0.06);
+
+	--lang-java: #e08a2c;
+	--lang-js: #e5c92f;
+	--lang-ts: #3c82d6;
+	--lang-py: #38a67a;
+
+	--font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+	--font-body: 'Instrument Sans', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--bg: #0a1a20;
+		--panel: #10252d;
+		--panel2: #153039;
+		--ink: #dcebe8;
+		--muted: #86a1a6;
+		--line: #22414a;
+		--accent: #ff4d94;
+		--blast: #ff9d42;
+		--neutral: #2f4e56;
+		--folder: rgba(220, 235, 232, 0.045);
+		--edge: rgba(220, 235, 232, 0.34);
+		--grid: rgba(220, 235, 232, 0.05);
+		color-scheme: dark;
+	}
+}
+
+:root[data-theme='dark'] {
+	--bg: #0a1a20;
+	--panel: #10252d;
+	--panel2: #153039;
+	--ink: #dcebe8;
+	--muted: #86a1a6;
+	--line: #22414a;
+	--accent: #ff4d94;
+	--blast: #ff9d42;
+	--neutral: #2f4e56;
+	--folder: rgba(220, 235, 232, 0.045);
+	--edge: rgba(220, 235, 232, 0.34);
+	--grid: rgba(220, 235, 232, 0.05);
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	height: 100%;
+	margin: 0;
+}
+
+body {
+	background: var(--bg);
+	color: var(--ink);
+	font:
+		14px/1.5 var(--font-body),
+		system-ui,
+		sans-serif;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+		env(safe-area-inset-left);
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
