@@ -5,7 +5,7 @@
 	import BrandMark from '#lib/ui/BrandMark.svelte';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { data, children }: LayoutProps = $props();
 </script>
 
 <svelte:head>
@@ -19,6 +19,19 @@
 			<BrandMark />
 			<span class="wordmark">Repograph</span>
 		</a>
+		<div class="account">
+			{#if data.user}
+				{#if data.user.avatarUrl}
+					<img class="avatar" src={data.user.avatarUrl} alt="" width="24" height="24" />
+				{/if}
+				<span class="username">{data.user.username}</span>
+				<form method="post" action={resolve('/auth/logout')}>
+					<button class="btn" type="submit">Log out</button>
+				</form>
+			{:else}
+				<a class="btn" href={resolve('/auth/github')} data-sveltekit-reload>Sign in with GitHub</a>
+			{/if}
+		</div>
 	</header>
 	{@render children()}
 </div>
@@ -45,6 +58,42 @@
 		gap: 8px;
 		color: var(--ink);
 		text-decoration: none;
+	}
+
+	.account {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-left: auto;
+	}
+
+	.account form {
+		margin: 0;
+	}
+
+	.avatar {
+		border-radius: 50%;
+		border: 1px solid var(--line);
+	}
+
+	.username {
+		font-weight: 600;
+	}
+
+	.btn {
+		font: inherit;
+		font-weight: 600;
+		color: var(--ink);
+		background: var(--panel2);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 5px 14px;
+		cursor: pointer;
+		text-decoration: none;
+	}
+
+	.btn:hover {
+		border-color: var(--ink);
 	}
 
 	.wordmark {
