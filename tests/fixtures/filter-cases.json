@@ -1,0 +1,40 @@
+{
+	"kept": [
+		"src/a.ts",
+		"app/models.py",
+		"src/main/java/A.java",
+		"lib/builder.js",
+		"outline/a.js",
+		"a.jsx",
+		"a.mjs",
+		"a.cjs",
+		"a.tsx",
+		"a.mts",
+		"a.cts",
+		"UPPER.PY"
+	],
+	"dropped": [
+		"node_modules/x/index.js",
+		"a/.git/hooks/x.py",
+		"dist/app.js",
+		"pkg/build/a.ts",
+		"target/A.java",
+		"src/__pycache__/m.py",
+		".venv/lib/x.py",
+		"venv/x.py",
+		"x/site-packages/y.py",
+		".svelte-kit/out.js",
+		"coverage/lcov.js",
+		".next/a.js",
+		"types/a.d.ts",
+		"a.d.mts",
+		"a.d.cts",
+		"vendor/jq.min.js",
+		"a.min.mjs",
+		"a.min.cjs",
+		"app.bundle.js",
+		"README.md",
+		"Makefile",
+		"a.go"
+	]
+}

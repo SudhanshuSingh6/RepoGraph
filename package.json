@@ -14,7 +14,11 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest run --passWithNoTests",
 		"test": "npm run test:unit",
-		"db:migrate": "node --env-file-if-exists=.env db/migrate.ts"
+		"db:migrate": "node --env-file-if-exists=.env db/migrate.ts",
+		"worker": "uv run --env-file .env python workers/worker_loop.py",
+		"worker:watchdog": "uv run --env-file .env python workers/worker_loop.py --watchdog",
+		"test:py": "uv run pytest tests/unit",
+		"test:py:integration": "uv run --env-file .env pytest tests/integration"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -41,6 +45,7 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.135.0",
+		"jszip": "^3.10.1",
 		"postgres": "^3.4.9"
 	},
 	"engines": {
