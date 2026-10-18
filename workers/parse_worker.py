@@ -1,6 +1,7 @@
-"""Processes one claimed parse job: fetch source → build inventory → store it.
+"""Processes one claimed parse job: fetch source → build inventory (with each file's
+imports) → resolve imports to edges → store files and edges.
 
-All parsed rows for the job, plus the job's own `done` transition, are written in ONE
+All parsed rows for the job (files and edges), plus the job's own `done` transition, are written in ONE
 transaction that first deletes any rows from a previous attempt. A crash mid-parse
 therefore leaves nothing behind, and a retry starts from a clean slate. The final
 transition is conditioned on this attempt still owning the claim, so an attempt that
@@ -16,6 +17,7 @@ import psycopg
 
 from file_storage import write_contents
 from inventory import build_inventory
+from resolve import link_files
 from source import Caps, ImportRejected, clone_github, extract_zip
 
 
@@ -113,6 +115,11 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
                     )
                     ids.append(cur.fetchone()["id"])
                 write_contents(cur, [(i, f.content) for i, f in zip(ids, inv.files)])
+                cur.executemany(
+                    "insert into parsed_edges (project_id, from_file_id, to_file_id) "
+                    "values (%s, %s, %s)",
+                    [(job.project_id, ids[a], ids[b]) for a, b in link_files(inv.files)],
+                )
             finish(conn, job, "done", None)
             conn.execute(
                 "update projects set status = 'ready', error_message = null, "

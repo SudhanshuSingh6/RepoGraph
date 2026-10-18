@@ -57,6 +57,7 @@
 		<span class="repo">{current.name}</span>
 		<span class="stat"><b>{fmt(current.summary.files)}</b> files</span>
 		<span class="stat"><b>{fmt(current.summary.lines)}</b> lines</span>
+		<span class="stat"><b>{fmt(current.summary.imports)}</b> imports</span>
 		{#if current.skippedLargeFiles > 0}
 			<span class="stat warn">
 				{current.skippedLargeFiles}

@@ -1,9 +1,14 @@
+import json
 from pathlib import Path
 
 from filters import MAX_FILE_BYTES
 from inventory import build_inventory, count_loc
+from resolve import link_files
 
-FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "sample-project"
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURE = ROOT / "fixtures" / "sample-project"
+SAMPLE_EDGES = {tuple(e) for e in
+                json.loads((ROOT / "tests/fixtures/sample-edges.json").read_text())["edges"]}
 
 
 def write(root: Path, rel: str, data: bytes):
@@ -61,3 +66,12 @@ def test_sample_project_inventory():
     assert set(langs) == {"java", "js", "ts", "py"}
     assert sum(langs.values()) == len(inv.files)
     assert any(f.is_test for f in inv.files)
+
+
+def test_sample_project_import_edges():
+    """The fixture's known graph (fixtures/sample-project/README.md), including the
+    store → render → format → store cycle."""
+    inv = build_inventory(FIXTURE)
+    got = {(inv.files[a].path, inv.files[b].path) for a, b in link_files(inv.files)}
+    assert got == SAMPLE_EDGES
+

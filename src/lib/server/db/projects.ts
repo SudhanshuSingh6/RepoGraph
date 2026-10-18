@@ -18,7 +18,12 @@ export type Project = {
 };
 
 export type LanguageTotals = { lang: string; files: number; lines: number };
-export type ProjectSummary = { files: number; lines: number; languages: LanguageTotals[] };
+export type ProjectSummary = {
+	files: number;
+	lines: number;
+	imports: number;
+	languages: LanguageTotals[];
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -75,10 +80,14 @@ export async function getProjectSummary(projectId: string): Promise<ProjectSumma
 		from parsed_files where project_id = ${projectId}
 		group by lang order by lines desc
 	`;
+	const [{ imports }] = await db()`
+		select count(*)::int as imports from parsed_edges where project_id = ${projectId}
+	`;
 	const languages = rows.map((r) => ({ lang: r.lang, files: r.files, lines: r.lines }));
 	return {
 		files: languages.reduce((n, l) => n + l.files, 0),
 		lines: languages.reduce((n, l) => n + l.lines, 0),
+		imports,
 		languages
 	};
 }

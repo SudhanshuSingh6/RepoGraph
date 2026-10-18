@@ -1,0 +1,32 @@
+{
+	"_comment": "Known import edges of fixtures/sample-project (importer, imported). Includes the store -> render -> format -> store cycle.",
+	"edges": [
+		["backend/app.py", "backend/routes.py"],
+		["backend/routes.py", "backend/models.py"],
+		["backend/tests/test_routes.py", "backend/app.py"],
+		[
+			"jobs/src/main/java/com/example/jobs/JobsApplication.java",
+			"jobs/src/main/java/com/example/jobs/reports/ReportJob.java"
+		],
+		[
+			"jobs/src/main/java/com/example/jobs/reports/ReportJob.java",
+			"jobs/src/main/java/com/example/jobs/BaseJob.java"
+		],
+		[
+			"jobs/src/main/java/com/example/jobs/reports/ReportJob.java",
+			"jobs/src/main/java/com/example/jobs/model/Order.java"
+		],
+		[
+			"jobs/src/test/java/com/example/jobs/ReportJobTest.java",
+			"jobs/src/main/java/com/example/jobs/reports/ReportJob.java"
+		],
+		["web/src/api/client.test.ts", "web/src/api/client.ts"],
+		["web/src/api/client.ts", "web/src/state/store.ts"],
+		["web/src/index.ts", "web/src/api/client.ts"],
+		["web/src/index.ts", "web/src/state/store.ts"],
+		["web/src/state/store.ts", "web/src/ui/render.ts"],
+		["web/src/ui/format.js", "web/src/state/store.ts"],
+		["web/src/ui/render.ts", "web/src/state/store.ts"],
+		["web/src/ui/render.ts", "web/src/ui/format.js"]
+	]
+}
