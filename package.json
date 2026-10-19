@@ -41,7 +41,8 @@
 	},
 	"imports": {
 		"#lib": "./src/lib/index.js",
-		"#lib/*": "./src/lib/*"
+		"#lib/*": "./src/lib/*",
+		"#analysis/*": "./packages/analysis/*"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.135.0",

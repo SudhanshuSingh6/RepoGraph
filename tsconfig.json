@@ -4,5 +4,5 @@
 		"strict": true,
 		"types": ["$app/types", "node"]
 	},
-	"include": ["src", "db", "vite.config.ts"]
+	"include": ["src", "db", "packages", "vite.config.ts"]
 }

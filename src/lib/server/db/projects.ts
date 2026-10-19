@@ -14,6 +14,7 @@ export type Project = {
 	status: ProjectStatus;
 	errorMessage: string | null;
 	skippedLargeFiles: number;
+	parsedAt: Date | null; // set by the worker each time an import completes
 	createdAt: Date;
 };
 
@@ -55,7 +56,7 @@ export async function getProject(id: string): Promise<Project | null> {
 	if (!UUID.test(id)) return null;
 	const [row] = await db()`
 		select id, owner_id, name, source, github_owner, github_repo, github_branch, status,
-			error_message, skipped_large_files, created_at
+			error_message, skipped_large_files, parsed_at, created_at
 		from projects where id = ${id}
 	`;
 	if (!row) return null;
@@ -70,6 +71,7 @@ export async function getProject(id: string): Promise<Project | null> {
 		status: row.status,
 		errorMessage: row.error_message,
 		skippedLargeFiles: row.skipped_large_files,
+		parsedAt: row.parsed_at,
 		createdAt: row.created_at
 	};
 }

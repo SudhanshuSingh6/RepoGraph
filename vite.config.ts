@@ -24,6 +24,13 @@ export default defineConfig({
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}
+			},
+			{
+				test: {
+					name: 'analysis',
+					environment: 'node',
+					include: ['packages/**/*.{test,spec}.ts']
+				}
 			}
 		]
 	}

@@ -123,7 +123,7 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
             finish(conn, job, "done", None)
             conn.execute(
                 "update projects set status = 'ready', error_message = null, "
-                "skipped_large_files = %s where id = %s",
+                "skipped_large_files = %s, parsed_at = now() where id = %s",
                 (inv.skipped_large, job.project_id),
             )
             conn.execute("delete from project_uploads where project_id = %s", (job.project_id,))

@@ -59,6 +59,25 @@ export default defineConfig(
 		}
 	},
 	{
+		// packages/analysis is pure functions in, data out — liftable into its own
+		// service later (README scaling table), so it must not depend on the app.
+		files: ['packages/**'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							regex: '^(\\$app|\\$lib|#lib|@sveltejs)(/|$)',
+							message: 'packages/analysis must not import SvelteKit or app code.'
+						},
+						{ group: ['postgres', 'svelte', 'svelte/*'], message: 'packages/analysis is pure.' }
+					]
+				}
+			]
+		}
+	},
+	{
 		// The migration runner is a standalone script outside the app.
 		files: ['db/**'],
 		rules: { 'no-restricted-imports': 'off' }
