@@ -10,14 +10,18 @@ export function requireUser(event: Pick<RequestEvent, 'locals'>): User {
 
 /**
  * Every /api/projects/:id/* route (and page) goes through this before touching a
- * project. Someone else's project is reported as not found, so IDs can't be probed.
+ * project. Public projects (no owner: a public GitHub repo or the sample, imported
+ * without signing in) are open to anyone with the link. An owned project is only for
+ * its owner; to anyone else it is reported as not found, so IDs can't be probed.
  */
-export async function requireProjectOwner(
+export async function requireProjectAccess(
 	event: Pick<RequestEvent, 'locals'>,
 	projectId: string
 ): Promise<Project> {
-	const user = requireUser(event);
 	const project = await getProject(projectId);
-	if (!project || project.ownerId !== user.id) error(404, 'Project not found.');
+	if (!project) error(404, 'Project not found.');
+	if (project.ownerId === null) return project;
+	const user = requireUser(event);
+	if (project.ownerId !== user.id) error(404, 'Project not found.');
 	return project;
 }

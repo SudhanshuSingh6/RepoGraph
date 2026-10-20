@@ -1,11 +1,14 @@
-import { redirect } from '@sveltejs/kit';
-import { requireProjectOwner } from '#lib/server/auth/guards.ts';
+import { isHttpError, redirect } from '@sveltejs/kit';
+import { requireProjectAccess } from '#lib/server/auth/guards.ts';
 import { getProjectSummary } from '#lib/server/db/projects.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	if (!event.locals.user) redirect(303, '/auth/github');
-	const project = await requireProjectOwner(event, event.params.projectId);
+	const project = await requireProjectAccess(event, event.params.projectId).catch((e) => {
+		// The owner of a private project, signed out (e.g. an expired session).
+		if (isHttpError(e, 401)) redirect(303, '/auth/github');
+		throw e;
+	});
 	return {
 		project: {
 			id: project.id,

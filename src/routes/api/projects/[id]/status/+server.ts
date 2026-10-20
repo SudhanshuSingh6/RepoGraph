@@ -1,9 +1,9 @@
-import { requireProjectOwner } from '#lib/server/auth/guards.ts';
+import { requireProjectAccess } from '#lib/server/auth/guards.ts';
 import { getProjectSummary } from '#lib/server/db/projects.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (event) => {
-	const project = await requireProjectOwner(event, event.params.id);
+	const project = await requireProjectAccess(event, event.params.id);
 	return Response.json({
 		id: project.id,
 		name: project.name,

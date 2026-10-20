@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { UNGROUPED, analyze } from '#analysis/graph/index.ts';
-import { requireProjectOwner } from '#lib/server/auth/guards.ts';
+import { requireProjectAccess } from '#lib/server/auth/guards.ts';
 import { getProjectGraph } from '#lib/server/db/graph.ts';
 import { cached } from '#lib/server/graphCache.ts';
 import type { RequestHandler } from './$types';
@@ -25,7 +25,7 @@ async function buildPayload(projectId: string, name: string): Promise<string> {
 
 /** The whole, unfiltered derived graph (repograph-spec.md §7) — computed once per import. */
 export const GET: RequestHandler = async (event) => {
-	const project = await requireProjectOwner(event, event.params.id);
+	const project = await requireProjectAccess(event, event.params.id);
 	if (project.status !== 'ready' || !project.parsedAt) {
 		error(409, 'This project has not finished importing yet.');
 	}

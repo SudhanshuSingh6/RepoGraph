@@ -5,7 +5,7 @@ export type ProjectStatus = 'pending' | 'cloning' | 'parsing' | 'ready' | 'error
 
 export type Project = {
 	id: string;
-	ownerId: string;
+	ownerId: string | null; // null = public project, imported without signing in
 	name: string;
 	source: 'github' | 'upload';
 	githubOwner: string | null;
@@ -31,7 +31,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function insertProject(
 	tx: Tx,
 	input: {
-		ownerId: string;
+		ownerId: string | null;
 		name: string;
 		source: 'github' | 'upload';
 		githubOwner?: string;

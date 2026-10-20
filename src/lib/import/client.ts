@@ -68,20 +68,6 @@ function stripRoot(path: string): string {
 }
 
 /** The bundled sample project (fixtures/sample-project), loaded only when asked for. */
-export async function sampleProjectFiles(): Promise<{ name: string; files: PickedFile[] }> {
-	const modules = import.meta.glob<string>('/fixtures/sample-project/**/*', {
-		query: '?raw',
-		import: 'default'
-	});
-	const files = await Promise.all(
-		Object.entries(modules).map(async ([key, load]) => ({
-			path: key.replace('/fixtures/', ''),
-			file: new Blob([await load()])
-		}))
-	);
-	return { name: 'sample-project', files };
-}
-
 export async function zipFiles(
 	files: PickedFile[],
 	limits: ImportLimits,
@@ -133,11 +119,20 @@ export function uploadArchive(
 	});
 }
 
-export async function importFromGithub(repo: string, branch: string): Promise<string> {
+export function importFromGithub(repo: string, branch: string): Promise<string> {
+	return createProject({ github: repo, branch: branch || undefined });
+}
+
+/** The built-in sample — the server zips it, so this works signed out. */
+export function importSample(): Promise<string> {
+	return createProject({ sample: true });
+}
+
+async function createProject(payload: object): Promise<string> {
 	const res = await fetch('/api/projects', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ github: repo, branch: branch || undefined })
+		body: JSON.stringify(payload)
 	});
 	const body = await res.json().catch(() => ({}));
 	if (res.status !== 201) throw new ImportError(body.message ?? `Import failed (${res.status}).`);

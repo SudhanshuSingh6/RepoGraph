@@ -8,7 +8,7 @@
 		filesFromDrop,
 		filesFromInput,
 		importFromGithub,
-		sampleProjectFiles,
+		importSample,
 		uploadArchive,
 		zipFiles
 	} from '#lib/import/client.ts';
@@ -59,9 +59,8 @@
 	}
 
 	function trySample() {
-		if (!signedIn()) return;
 		progress('Loading the sample project…', null);
-		run(async () => uploadPicked(await sampleProjectFiles()));
+		run(importSample);
 	}
 
 	function onFolderPicked() {
@@ -78,7 +77,6 @@
 
 	function importGithub(e: SubmitEvent) {
 		e.preventDefault();
-		if (!signedIn()) return;
 		progress('Starting import…', null);
 		run(() => importFromGithub(repo, branch));
 	}
@@ -135,7 +133,7 @@
 			</div>
 			<p class="fine">
 				Folders like node_modules, .git, build, dist and venv are skipped automatically.
-				{#if !data.user}Sign in with GitHub to import a project.{/if}
+				{#if !data.user}Sign in with GitHub to upload a folder or .zip.{/if}
 			</p>
 
 			<form class="gh" onsubmit={importGithub}>

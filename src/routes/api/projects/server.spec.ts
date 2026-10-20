@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isHttpError } from '@sveltejs/kit';
+import JSZip from 'jszip';
 
 const insertProject = vi.fn();
 const saveUpload = vi.fn();
@@ -47,9 +48,38 @@ beforeEach(() => {
 });
 
 describe('POST /api/projects', () => {
-	it('requires sign-in', async () => {
-		expect(isHttpError(await call(json({ github: 'o/r' }), null), 401)).toBe(true);
+	it('requires sign-in for uploads, refused before the body is read', async () => {
+		const req = upload(ZIP);
+		expect(isHttpError(await call(req, null), 401)).toBe(true);
+		expect(req.bodyUsed).toBe(false);
 		expect(insertProject).not.toHaveBeenCalled();
+	});
+
+	it('imports a public GitHub repo signed out, as an ownerless project', async () => {
+		const res = (await call(json({ github: 'o/r' }), null)) as Response;
+		expect(res.status).toBe(201);
+		expect(insertProject.mock.calls[0][1]).toMatchObject({ ownerId: null, source: 'github' });
+		expect(enqueueParseJob).toHaveBeenCalledWith('p-new', tx);
+	});
+
+	it('imports the sample project signed out, zipped on the server', async () => {
+		const res = (await call(json({ sample: true }), null)) as Response;
+		expect(res.status).toBe(201);
+		expect(insertProject.mock.calls[0][1]).toEqual({
+			ownerId: null,
+			name: 'sample-project',
+			source: 'upload'
+		});
+		const archive: Uint8Array = saveUpload.mock.calls[0][2];
+		expect([...archive.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+		const zip = await JSZip.loadAsync(archive);
+		expect(zip.file('sample-project/web/src/state/store.ts')).not.toBeNull();
+		expect(Object.values(zip.files).filter((f) => !f.dir)).toHaveLength(18); // 17 + README
+	});
+
+	it('keeps imports made while signed in owned', async () => {
+		await call(json({ sample: true }));
+		expect(insertProject.mock.calls[0][1].ownerId).toBe('u1');
 	});
 
 	it('creates a GitHub project and queues it in the same transaction', async () => {

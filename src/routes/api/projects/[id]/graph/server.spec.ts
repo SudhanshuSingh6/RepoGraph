@@ -70,6 +70,11 @@ describe('GET /api/projects/:id/graph', () => {
 		expect(getProjectGraph).not.toHaveBeenCalled();
 	});
 
+	it('serves a public (ownerless) project signed out', async () => {
+		getProject.mockResolvedValue({ ...ready, ownerId: null });
+		expect(((await call(null)) as Response).status).toBe(200);
+	});
+
 	it('is 409 until the import is ready', async () => {
 		getProject.mockResolvedValue({ ...ready, status: 'parsing', parsedAt: null });
 		expect(isHttpError(await call(), 409)).toBe(true);
