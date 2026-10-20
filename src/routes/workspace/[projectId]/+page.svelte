@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import LoadingOverlay from '#lib/ui/LoadingOverlay.svelte';
+	import Tree from '#lib/views/Tree.svelte';
+	import TreeControls from '#lib/views/TreeControls.svelte';
+	import Treemap from '#lib/views/Treemap.svelte';
+	import TreemapControls from '#lib/views/TreemapControls.svelte';
+	import { LANG_NAMES } from '#lib/workspace/langs.ts';
+	import { Workspace, type GraphPayload } from '#lib/workspace/state.svelte.ts';
+	import Tip from '#lib/workspace/Tip.svelte';
+	import Toolbar from '#lib/workspace/Toolbar.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -14,12 +22,6 @@
 		polled?.id === data.project.id ? polled : { ...data.project, summary: data.summary }
 	);
 
-	const LANG_NAMES: Record<string, string> = {
-		java: 'Java',
-		js: 'JavaScript',
-		ts: 'TypeScript',
-		py: 'Python'
-	};
 	const POLL_MS = 1000;
 
 	const settled = $derived(current.status === 'ready' || current.status === 'error');
@@ -45,6 +47,30 @@
 		return () => clearInterval(timer);
 	});
 
+	// Once ready, the graph the views draw from (keyed by project, like `polled`).
+	let loaded = $state<{ id: string; ws: Workspace } | null>(null);
+	let graphError = $state<string | null>(null);
+	const ws = $derived(loaded?.id === current.id ? loaded.ws : null);
+
+	$effect(() => {
+		if (current.status !== 'ready' || ws) return;
+		const { id, name } = current;
+		let cancelled = false;
+		graphError = null;
+		fetch(`/api/projects/${id}/graph`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`The graph couldn't be loaded (${res.status}).`);
+				const payload: GraphPayload = await res.json();
+				if (!cancelled) loaded = { id, ws: new Workspace(payload, name) };
+			})
+			.catch((e: Error) => {
+				if (!cancelled) graphError = e.message;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	const fmt = (n: number) => n.toLocaleString();
 </script>
 
@@ -66,30 +92,62 @@
 		{/if}
 	</div>
 
-	<section class="workspace">
-		<div class="summary">
-			<h2>Languages</h2>
-			<div class="bar" role="img" aria-label="Lines of code by language">
-				{#each current.summary.languages as l (l.lang)}
-					<span
-						style:width="{(l.lines / Math.max(current.summary.lines, 1)) * 100}%"
-						style:background="var(--lang-{l.lang})"
-					></span>
-				{/each}
+	{#if ws}
+		<section class="workspace">
+			<Toolbar {ws} />
+			<div class="ctl">
+				{#if ws.view === 'tree'}
+					<TreeControls {ws} />
+				{:else if ws.view === 'treemap'}
+					<TreemapControls {ws} />
+				{/if}
 			</div>
-			<ul>
-				{#each current.summary.languages as l (l.lang)}
-					<li class="lrow">
-						<i style:background="var(--lang-{l.lang})"></i>
-						<span>{LANG_NAMES[l.lang] ?? l.lang}</span>
-						<span class="num">{fmt(l.files)} files</span>
-						<span class="num">{fmt(l.lines)} lines</span>
-					</li>
-				{/each}
-			</ul>
-			<p class="fine">The six views arrive in the next build phases.</p>
-		</div>
-	</section>
+			<div class="main">
+				<aside class="side" aria-live="polite">
+					<h2>Languages</h2>
+					<div class="bar" role="img" aria-label="Lines of code by language">
+						{#each current.summary.languages as l (l.lang)}
+							<span
+								style:width="{(l.lines / Math.max(current.summary.lines, 1)) * 100}%"
+								style:background="var(--lang-{l.lang})"
+							></span>
+						{/each}
+					</div>
+					<ul>
+						{#each current.summary.languages as l (l.lang)}
+							<li class="lrow">
+								<i style:background="var(--lang-{l.lang})"></i>
+								<span>{LANG_NAMES[l.lang as keyof typeof LANG_NAMES] ?? l.lang}</span>
+								<span class="num">{fmt(l.files)} {l.files === 1 ? 'file' : 'files'}</span>
+								<span class="num">{fmt(l.lines)} lines</span>
+							</li>
+						{/each}
+					</ul>
+				</aside>
+				<div class="stage" role="tabpanel" aria-label="Active view">
+					{#if ws.view === 'tree'}
+						<Tree {ws} />
+					{:else if ws.view === 'treemap'}
+						<Treemap {ws} />
+					{/if}
+				</div>
+				<div class="chat-panel">
+					<h2>Ask the codebase</h2>
+				</div>
+			</div>
+		</section>
+		<Tip tip={ws.tip} />
+	{:else if graphError}
+		<section class="workspace">
+			<div class="summary failed">
+				<h2>Couldn't load the graph</h2>
+				<p class="err">{graphError}</p>
+			</div>
+		</section>
+	{:else}
+		<section class="workspace"></section>
+		<LoadingOverlay message="Building the graph…" />
+	{/if}
 {:else if current.status === 'error'}
 	<section class="workspace">
 		<div class="summary failed">
@@ -138,11 +196,127 @@
 	.workspace {
 		flex: 1;
 		min-height: 0;
-		padding: 24px 18px;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* Per-view control bar (§15): its contents swap with the active tab. */
+	.ctl {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 14px;
+		min-height: 44px;
+		padding: 7px 18px;
+		background: var(--panel2);
+		border-bottom: 1px solid var(--line);
+	}
+
+	.ctl :global(.btn) {
+		font: inherit;
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink);
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 4px 12px;
+		cursor: pointer;
+	}
+
+	.ctl :global(.btn:hover) {
+		border-color: var(--ink);
+	}
+
+	.ctl :global(.field) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+
+	.ctl :global(select) {
+		font: inherit;
+		font-weight: 400;
+		color: var(--ink);
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		padding: 3px 6px;
+	}
+
+	.ctl :global(.hint) {
+		margin-left: auto;
+		font-size: 12.5px;
+		font-style: italic;
+		color: var(--muted);
+	}
+
+	/* §3: side panel | stage | chat panel. */
+	.main {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: 300px 1fr 380px;
+	}
+
+	.side,
+	.chat-panel {
+		min-height: 0;
+		overflow: auto;
+		padding: 18px;
+		background: var(--panel);
+	}
+
+	.side {
+		border-right: 1px solid var(--line);
+	}
+
+	.chat-panel {
+		border-left: 1px solid var(--line);
+	}
+
+	.stage {
+		position: relative;
+		min-width: 0;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	@media (max-width: 900px) {
+		.workspace {
+			overflow: auto;
+		}
+
+		.main {
+			display: flex;
+			flex-direction: column;
+			flex: none;
+		}
+
+		.stage {
+			order: 1;
+			height: 62vh;
+		}
+
+		.side {
+			order: 2;
+			border-right: none;
+			border-top: 1px solid var(--line);
+		}
+
+		.chat-panel {
+			order: 3;
+			height: 60vh;
+			border-left: none;
+			border-top: 1px solid var(--line);
+		}
 	}
 
 	.summary {
 		max-width: 520px;
+		margin: 24px 18px;
 		padding: 20px;
 		background: var(--panel);
 		border: 1px solid var(--line);
@@ -188,12 +362,6 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--muted);
 		text-align: right;
-	}
-
-	.fine {
-		margin: 14px 0 0;
-		font-size: 12.5px;
-		color: var(--muted);
 	}
 
 	.err {
