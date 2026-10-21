@@ -38,9 +38,18 @@ export function groupCount(files: FileNode[], level: number): number {
  */
 export function defaultGroupLevel(files: FileNode[]): number {
 	if (files.length <= GROUPING_MIN_FILES) return UNGROUPED;
+	return detailedLevelWithin(files, MAX_GROUPS);
+}
+
+/**
+ * The most detailed folder level that keeps at most `maxGroups` groups (level 1 if even
+ * that has more; ungrouped if there are no folders at all). The Architecture view's
+ * component diagram starts here with `maxGroups` = 20 (repograph-spec.md §11).
+ */
+export function detailedLevelWithin(files: FileNode[], maxGroups: number): number {
 	const levels = groupLevels(files).filter((l) => l !== UNGROUPED);
 	for (let i = levels.length - 1; i >= 0; i--) {
-		if (groupCount(files, levels[i]) <= MAX_GROUPS) return levels[i];
+		if (groupCount(files, levels[i]) <= maxGroups) return levels[i];
 	}
 	return levels[0] ?? UNGROUPED;
 }

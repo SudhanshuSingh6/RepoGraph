@@ -29,7 +29,7 @@ export const GET: RequestHandler = async (event) => {
 	if (project.status !== 'ready' || !project.parsedAt) {
 		error(409, 'This project has not finished importing yet.');
 	}
-	const body = await cached(project.id, project.parsedAt.toISOString(), () =>
+	const body = await cached(`${project.id}:graph`, project.parsedAt.toISOString(), () =>
 		buildPayload(project.id, project.name)
 	);
 	return new Response(body, { headers: { 'content-type': 'application/json' } });

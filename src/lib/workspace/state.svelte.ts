@@ -3,6 +3,7 @@ import {
 	UNGROUPED,
 	buildTree,
 	derive,
+	detailedLevelWithin,
 	type Derived,
 	type Edge,
 	type FileNode,
@@ -10,6 +11,7 @@ import {
 	type Lang,
 	type TreeNode
 } from '#analysis/graph/index.ts';
+import type { TypeDecl } from '#analysis/types/index.ts';
 import { activeMask, type LangOn } from './filters.ts';
 import { LANG_NAMES } from './langs.ts';
 
@@ -32,8 +34,11 @@ export type Tip = { x: number; y: number; title: string; rows: [string, string][
 
 /** One open project's view and filter state (the prototype's `S`). */
 export class Workspace {
+	readonly id: string;
 	readonly graph: Graph;
 	readonly name: string;
+	/** The unfiltered derivation — name resolution and (later) chat see every file. */
+	readonly full: Derived;
 	readonly levels: number[];
 	readonly defaultLevel: number;
 
@@ -49,20 +54,56 @@ export class Workspace {
 	// Size map: the folder zoomed into ('' = the root) and the fill mapping.
 	tmPath = $state('');
 	colorBy = $state<ColorBy>('lang');
+	// Dependencies (§10): Detail level, Spacing and the five checkboxes; `blastFrom` is
+	// the node a Blast-radius click started from.
+	depLevel = $state(UNGROUPED);
+	spacing = $state(1);
+	hideUnconnected = $state(true);
+	onlyCycles = $state(false);
+	allLabels = $state(false);
+	blast = $state(false);
+	blastFrom = $state<string | null>(null);
+	cluster = $state(true);
+	// Architecture (§11): component-diagram Detail level, and the package whose class
+	// diagram is open (null = the component diagram). Types load on first use.
+	umlLevel = $state(UNGROUPED);
+	umlFolder = $state<string | null>(null);
+	types = $state.raw<TypeDecl[] | null>(null);
+	typesError = $state<string | null>(null);
+	#typesRequested = false;
 
 	// `refresh()` in the prototype: re-derived whenever a filter changes.
 	readonly active: boolean[];
 	readonly derived: Derived;
 	readonly tree: TreeNode;
 
-	constructor(payload: GraphPayload, name: string) {
+	constructor(payload: GraphPayload, name: string, id: string) {
+		this.id = id;
 		this.graph = { files: payload.files, edges: payload.edges };
 		this.name = name;
+		this.full = derive(this.graph);
+		this.umlLevel = detailedLevelWithin(this.graph.files, 20);
 		this.levels = payload.levels.map((l) => l ?? UNGROUPED);
 		this.defaultLevel = payload.defaultLevel ?? UNGROUPED;
+		this.depLevel = this.defaultLevel;
 		this.active = $derived(activeMask(this.graph.files, this.langOn, this.hideTests));
 		this.derived = $derived(derive(this.graph, this.active));
 		this.tree = $derived(buildTree(this.graph, this.derived, this.name));
+	}
+
+	/** Fetches `/types` once, the first time a view needs it. */
+	loadTypes() {
+		if (this.#typesRequested) return;
+		this.#typesRequested = true;
+		fetch(`/api/projects/${this.id}/types`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`The classes couldn't be loaded (${res.status}).`);
+				this.types = ((await res.json()) as { types: TypeDecl[] }).types;
+			})
+			.catch((e: Error) => {
+				this.typesError = e.message;
+				this.#typesRequested = false;
+			});
 	}
 
 	toggleLang(lang: Lang) {

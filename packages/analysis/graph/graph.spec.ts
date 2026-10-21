@@ -107,6 +107,12 @@ describe('bfsReach', () => {
 		expect(bfsReach(d.adj, 3).has(3)).toBe(false);
 		expect(bfsReach(d.adj, 5).size).toBe(0);
 	});
+
+	it("multi-source: the union of every start node's reach", () => {
+		expect([...bfsReach(d.rev, [4, 5])].sort()).toEqual([0, 1, 2, 3]);
+		expect([...bfsReach(d.adj, [3, 5])].sort()).toEqual([0, 1, 2, 4]);
+		expect(bfsReach(d.adj, []).size).toBe(0);
+	});
 });
 
 describe('the sample project', () => {

@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import LoadingOverlay from '#lib/ui/LoadingOverlay.svelte';
+	import Graph from '#lib/views/Graph.svelte';
+	import GraphControls from '#lib/views/GraphControls.svelte';
 	import Tree from '#lib/views/Tree.svelte';
 	import TreeControls from '#lib/views/TreeControls.svelte';
 	import Treemap from '#lib/views/Treemap.svelte';
 	import TreemapControls from '#lib/views/TreemapControls.svelte';
+	import Uml from '#lib/views/Uml.svelte';
+	import UmlControls from '#lib/views/UmlControls.svelte';
 	import { LANG_NAMES } from '#lib/workspace/langs.ts';
 	import { Workspace, type GraphPayload } from '#lib/workspace/state.svelte.ts';
 	import Tip from '#lib/workspace/Tip.svelte';
@@ -61,7 +65,7 @@
 			.then(async (res) => {
 				if (!res.ok) throw new Error(`The graph couldn't be loaded (${res.status}).`);
 				const payload: GraphPayload = await res.json();
-				if (!cancelled) loaded = { id, ws: new Workspace(payload, name) };
+				if (!cancelled) loaded = { id, ws: new Workspace(payload, name, id) };
 			})
 			.catch((e: Error) => {
 				if (!cancelled) graphError = e.message;
@@ -100,6 +104,10 @@
 					<TreeControls {ws} />
 				{:else if ws.view === 'treemap'}
 					<TreemapControls {ws} />
+				{:else if ws.view === 'graph'}
+					<GraphControls {ws} />
+				{:else if ws.view === 'uml'}
+					<UmlControls {ws} />
 				{/if}
 			</div>
 			<div class="main">
@@ -129,6 +137,10 @@
 						<Tree {ws} />
 					{:else if ws.view === 'treemap'}
 						<Treemap {ws} />
+					{:else if ws.view === 'graph'}
+						<Graph {ws} />
+					{:else if ws.view === 'uml'}
+						<Uml {ws} />
 					{/if}
 				</div>
 				<div class="chat-panel">

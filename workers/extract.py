@@ -1,8 +1,10 @@
-"""Extracts each file's import statements with tree-sitter (repograph-spec.md §6).
+"""Extracts per-file facts with tree-sitter, parsing each file once: its import
+statements (repograph-spec.md §6) and its class/interface declarations (§11).
 
-Replaces the prototype's regex `parseFile`: the AST already separates comments and
-strings from code, so a commented-out import never counts and nothing needs stripping.
-Resolution of what these imports point at lives in resolve.py.
+Replaces the prototype's regex `parseFile`/`extractTypes`: the AST already separates
+comments and strings from code, so a commented-out import or class never counts and
+nothing needs stripping. Resolution of what imports point at lives in resolve.py; type
+names are resolved later, in packages/analysis/types.
 """
 
 from dataclasses import dataclass, field
@@ -35,6 +37,21 @@ class Imports:
     java: list[JavaImport] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TypeDecl:
+    name: str
+    kind: str  # class | abstract | interface | enum | record
+    extends: tuple[str, ...] = ()  # supertype names as written, minus type arguments
+    implements: tuple[str, ...] = ()
+    line: int = 0  # 1-based
+
+
+@dataclass
+class FileFacts:
+    imports: Imports
+    types: list[TypeDecl]
+
+
 JS_QUERY = """
 (import_statement source: (string) @src)
 (export_statement source: (string) @src)
@@ -47,16 +64,25 @@ TS_QUERY = JS_QUERY + "(import_require_clause source: (string) @src)\n"
 PY_QUERY = "(import_statement) @imp (import_from_statement) @imp"
 JAVA_QUERY = "(package_declaration) @pkg (import_declaration) @imp"
 
+JS_TYPES = "(class_declaration) @t"
+TS_TYPES = "(class_declaration) @t (abstract_class_declaration) @t (interface_declaration) @t"
+PY_TYPES = "(class_definition) @t"
+JAVA_TYPES = """
+(class_declaration) @t (interface_declaration) @t (enum_declaration) @t (record_declaration) @t
+"""
+
 
 class _Grammar:
-    def __init__(self, language: object, query: str):
+    def __init__(self, language: object, imports: str, types: str):
         lang = Language(language)
         self.parser = Parser(lang)
-        self.query = Query(lang, query)
+        self.queries = {"imports": Query(lang, imports), "types": Query(lang, types)}
 
-    def captures(self, source: bytes) -> dict[str, list[Node]]:
-        tree = self.parser.parse(source)
-        return QueryCursor(self.query).captures(tree.root_node)
+    def parse(self, source: bytes) -> Node:
+        return self.parser.parse(source).root_node
+
+    def captures(self, root: Node, query: str) -> dict[str, list[Node]]:
+        return QueryCursor(self.queries[query]).captures(root)
 
 
 _GRAMMARS: dict[str, _Grammar] = {}
@@ -65,12 +91,13 @@ _GRAMMARS: dict[str, _Grammar] = {}
 def _grammar(key: str) -> _Grammar:
     if key not in _GRAMMARS:  # built lazily: only the languages a repo actually uses
         _GRAMMARS[key] = {
-            "js": lambda: _Grammar(tree_sitter_javascript.language(), JS_QUERY),
-            "ts": lambda: _Grammar(tree_sitter_typescript.language_typescript(), TS_QUERY),
+            "js": lambda: _Grammar(tree_sitter_javascript.language(), JS_QUERY, JS_TYPES),
+            "ts": lambda: _Grammar(tree_sitter_typescript.language_typescript(), TS_QUERY,
+                                   TS_TYPES),
             # .tsx needs its own grammar: `<T>x` casts are JSX there.
-            "tsx": lambda: _Grammar(tree_sitter_typescript.language_tsx(), TS_QUERY),
-            "py": lambda: _Grammar(tree_sitter_python.language(), PY_QUERY),
-            "java": lambda: _Grammar(tree_sitter_java.language(), JAVA_QUERY),
+            "tsx": lambda: _Grammar(tree_sitter_typescript.language_tsx(), TS_QUERY, TS_TYPES),
+            "py": lambda: _Grammar(tree_sitter_python.language(), PY_QUERY, PY_TYPES),
+            "java": lambda: _Grammar(tree_sitter_java.language(), JAVA_QUERY, JAVA_TYPES),
         }[key]()
     return _GRAMMARS[key]
 
@@ -83,8 +110,8 @@ def _in_order(nodes: list[Node]) -> list[Node]:
     return sorted(nodes, key=lambda n: n.start_byte)
 
 
-def _js(source: bytes, grammar: str) -> Imports:
-    caps = _grammar(grammar).captures(source)
+def _js(g: _Grammar, root: Node) -> Imports:
+    caps = g.captures(root, "imports")
     specs: list[str] = []
     for node in _in_order(caps.get("src", [])):
         # Only plain string literals; a template or variable can't be resolved statically.
@@ -99,9 +126,9 @@ def _dotted(node: Node | None) -> str:
     return _text(node) if node is not None else ""
 
 
-def _python(source: bytes) -> Imports:
+def _python(g: _Grammar, root: Node) -> Imports:
     out: list[PyImport] = []
-    for node in _in_order(_grammar("py").captures(source).get("imp", [])):
+    for node in _in_order(g.captures(root, "imports").get("imp", [])):
         if node.type == "import_statement":
             # import a.b.c, d.e as f
             for n in node.children_by_field_name("name"):
@@ -127,8 +154,8 @@ def _python(source: bytes) -> Imports:
     return Imports(python=out)
 
 
-def _java(source: bytes) -> Imports:
-    caps = _grammar("java").captures(source)
+def _java(g: _Grammar, root: Node) -> Imports:
+    caps = g.captures(root, "imports")
     package = None
     for node in _in_order(caps.get("pkg", [])):
         for c in node.named_children:
@@ -146,12 +173,115 @@ def _java(source: bytes) -> Imports:
     return Imports(java_package=package, java=imports)
 
 
-def extract_imports(path: str, lang: str, content: str) -> Imports:
-    source = content.encode("utf-8")
-    if lang == "py":
-        return _python(source)
-    if lang == "java":
-        return _java(source)
+def _type_name(node: Node) -> str | None:
+    """A supertype reference as written, without type arguments: `B<T>` → `B`,
+    `a.b.C` stays `a.b.C`, `Generic[T]` → `Generic`. None for anything that isn't a
+    plain (possibly qualified) name, e.g. `extends mixin(Base)`."""
+    if node.type in ("generic_type", "subscript"):
+        inner = node.child_by_field_name("name") or node.child_by_field_name("value") \
+            or (node.named_children[0] if node.named_children else None)
+        return _type_name(inner) if inner is not None else None
+    if node.type in ("identifier", "type_identifier", "scoped_type_identifier",
+                     "scoped_identifier", "nested_type_identifier", "member_expression",
+                     "attribute"):
+        return _text(node)
+    return None
+
+
+def _names(nodes: list[Node]) -> tuple[str, ...]:
+    return tuple(n for n in (_type_name(c) for c in nodes) if n)
+
+
+def _line(node: Node) -> int:
+    return node.start_point[0] + 1
+
+
+JAVA_KINDS = {"class_declaration": "class", "interface_declaration": "interface",
+              "enum_declaration": "enum", "record_declaration": "record"}
+
+
+def _java_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+    out = []
+    for node in _in_order(g.captures(root, "types").get("t", [])):
+        name = node.child_by_field_name("name")
+        if name is None:
+            continue
+        kind = JAVA_KINDS[node.type]
+        mods = next((c for c in node.children if c.type == "modifiers"), None)
+        if kind == "class" and mods is not None and any(c.type == "abstract" for c in mods.children):
+            kind = "abstract"
+        extends: tuple[str, ...] = ()
+        implements: tuple[str, ...] = ()
+        sup = node.child_by_field_name("superclass")
+        if sup is not None:
+            extends = _names(sup.named_children)
+        ifaces = node.child_by_field_name("interfaces")
+        if ifaces is not None:
+            implements = _names([t for tl in ifaces.named_children for t in tl.named_children])
+        for c in node.named_children:  # an interface's `extends A, B`
+            if c.type == "extends_interfaces":
+                extends = _names([t for tl in c.named_children for t in tl.named_children])
+        out.append(TypeDecl(_text(name), kind, extends, implements, _line(node)))
+    return out
+
+
+def _js_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+    out = []
+    for node in _in_order(g.captures(root, "types").get("t", [])):
+        name = node.child_by_field_name("name")
+        if name is None:
+            continue
+        if node.type == "interface_declaration":
+            ext = [c for c in node.named_children if c.type == "extends_type_clause"]
+            extends = _names([t for c in ext for t in c.children_by_field_name("type")])
+            out.append(TypeDecl(_text(name), "interface", extends, (), _line(node)))
+            continue
+        extends: tuple[str, ...] = ()
+        implements: tuple[str, ...] = ()
+        for heritage in (c for c in node.named_children if c.type == "class_heritage"):
+            for c in heritage.named_children:
+                if c.type == "extends_clause":  # TypeScript
+                    extends = _names(c.children_by_field_name("value"))
+                elif c.type == "implements_clause":
+                    implements = _names(c.named_children)
+                else:  # JavaScript: the superclass expression sits directly here
+                    extends = _names([c])
+        kind = "abstract" if node.type == "abstract_class_declaration" else "class"
+        out.append(TypeDecl(_text(name), kind, extends, implements, _line(node)))
+    return out
+
+
+def _py_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+    out = []
+    for node in _in_order(g.captures(root, "types").get("t", [])):
+        name = node.child_by_field_name("name")
+        if name is None:
+            continue
+        bases = node.child_by_field_name("superclasses")
+        # Keyword arguments (`metaclass=…`) aren't bases; `object` is every class's.
+        supers = _names([b for b in bases.named_children if b.type != "keyword_argument"]) \
+            if bases is not None else ()
+        extends = tuple(b for b in supers if b != "object")
+        out.append(TypeDecl(_text(name), "class", extends, (), _line(node)))
+    return out
+
+
+def _grammar_key(path: str, lang: str) -> str:
     if lang == "ts":
-        return _js(source, "tsx" if path.endswith(".tsx") else "ts")
-    return _js(source, "js")
+        return "tsx" if path.endswith(".tsx") else "ts"
+    return lang
+
+
+def analyze_file(path: str, lang: str, content: str) -> FileFacts:
+    """Parses the file once and extracts everything the worker stores about it."""
+    g = _grammar(_grammar_key(path, lang))
+    root = g.parse(content.encode("utf-8"))
+    if lang == "py":
+        return FileFacts(_python(g, root), _py_types(g, root))
+    if lang == "java":
+        return FileFacts(_java(g, root), _java_types(g, root))
+    return FileFacts(_js(g, root), _js_types(g, root))
+
+
+def extract_imports(path: str, lang: str, content: str) -> Imports:
+    return analyze_file(path, lang, content).imports

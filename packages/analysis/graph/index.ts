@@ -7,7 +7,14 @@ export { derive } from './derive.ts';
 export { tarjan } from './tarjan.ts';
 export { bfsReach } from './bfs.ts';
 export { buildTree } from './tree.ts';
-export { UNGROUPED, defaultGroupLevel, groupCount, groupLevels, groupOf } from './levels.ts';
+export {
+	UNGROUPED,
+	defaultGroupLevel,
+	detailedLevelWithin,
+	groupCount,
+	groupLevels,
+	groupOf
+} from './levels.ts';
 import { derive } from './derive.ts';
 import { buildTree } from './tree.ts';
 import { defaultGroupLevel, groupLevels } from './levels.ts';

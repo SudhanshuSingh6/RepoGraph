@@ -6,12 +6,12 @@
 
 	let { ws }: { ws: Workspace } = $props();
 
-	// `ready: false` until the view's build phase lands (BUILD_PLAN.md Phases 5b–7).
+	// `ready: false` until the view's build phase lands (BUILD_PLAN.md Phases 6–7).
 	const TABS: { id: View; label: string; ready: boolean }[] = [
 		{ id: 'tree', label: 'Tree', ready: true },
 		{ id: 'treemap', label: 'Size map', ready: true },
-		{ id: 'graph', label: 'Dependencies', ready: false },
-		{ id: 'uml', label: 'Architecture', ready: false },
+		{ id: 'graph', label: 'Dependencies', ready: true },
+		{ id: 'uml', label: 'Architecture', ready: true },
 		{ id: 'er', label: 'ER Diagram', ready: false },
 		{ id: 'hotspots', label: 'Hotspots', ready: false }
 	];

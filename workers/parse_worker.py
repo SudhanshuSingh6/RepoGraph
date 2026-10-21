@@ -1,7 +1,7 @@
 """Processes one claimed parse job: fetch source → build inventory (with each file's
-imports) → resolve imports to edges → store files and edges.
+imports and type declarations) → resolve imports to edges → store files, edges, types.
 
-All parsed rows for the job (files and edges), plus the job's own `done` transition, are written in ONE
+All parsed rows for the job (files, edges, types), plus the job's own `done` transition, are written in ONE
 transaction that first deletes any rows from a previous attempt. A crash mid-parse
 therefore leaves nothing behind, and a retry starts from a clean slate. The final
 transition is conditioned on this attempt still owning the claim, so an attempt that
@@ -119,6 +119,13 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
                     "insert into parsed_edges (project_id, from_file_id, to_file_id) "
                     "values (%s, %s, %s)",
                     [(job.project_id, ids[a], ids[b]) for a, b in link_files(inv.files)],
+                )
+                cur.executemany(
+                    "insert into parsed_types "
+                    "(project_id, file_id, name, kind, extends, implements, line) "
+                    "values (%s, %s, %s, %s, %s, %s, %s)",
+                    [(job.project_id, i, t.name, t.kind, list(t.extends), list(t.implements),
+                      t.line) for i, f in zip(ids, inv.files) for t in f.types],
                 )
             finish(conn, job, "done", None)
             conn.execute(

@@ -1,4 +1,4 @@
-"""BUILD_PLAN.md Phase 3a/3b acceptance checks for the worker, against real Postgres."""
+"""BUILD_PLAN.md Phase 3a/3b/6 acceptance checks for the worker, against real Postgres."""
 
 import io
 import json
@@ -72,6 +72,26 @@ def edge_paths(conn, pid):
     return sorted((r["from_path"], r["to_path"]) for r in rows)
 
 
+def type_rows(conn, pid):
+    rows = conn.execute(
+        "select f.path, t.name, t.kind, t.extends, t.implements from parsed_types t "
+        "join parsed_files f on f.id = t.file_id where t.project_id = %s", (pid,)).fetchall()
+    return sorted((r["path"].rsplit("/", 1)[1], r["name"], r["kind"], tuple(r["extends"]),
+                   tuple(r["implements"])) for r in rows)
+
+
+SAMPLE_TYPES = sorted([
+    ("BaseJob.java", "BaseJob", "abstract", (), ()),
+    ("CleanupJob.java", "CleanupJob", "class", ("BaseJob",), ()),
+    ("JobsApplication.java", "JobsApplication", "class", (), ()),
+    ("Order.java", "Order", "class", (), ()),
+    ("ReportJob.java", "ReportJob", "class", ("BaseJob",), ()),
+    ("ReportJobTest.java", "ReportJobTest", "class", (), ()),
+    ("client.ts", "ApiClient", "class", (), ()),
+    ("models.py", "Customer", "class", ("Base",), ()),
+])
+
+
 def expected_sample_paths():
     return sorted(p.relative_to(FIXTURE).as_posix() for p in FIXTURE.rglob("*")
                   if p.is_file() and p.suffix in {".ts", ".js", ".py", ".java"})
@@ -99,6 +119,7 @@ def test_upload_import_produces_inventory(conn, user_id):
         (pid,)).fetchone()["content"]
     assert content == (FIXTURE / "backend/models.py").read_text()
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)
+    assert type_rows(conn, pid) == SAMPLE_TYPES
     # Cleanup: the archive is gone once the job ends.
     assert conn.execute("select count(*) n from project_uploads").fetchone()["n"] == 0
 
@@ -116,6 +137,10 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
         crashed.execute("insert into parsed_files (project_id, path, lang, loc) "
                         "values (%s, %s, 'ts', 1)", (pid, path))
     crashed.execute(
+        "insert into parsed_types (project_id, file_id, name, kind, line) "
+        "select %s, id, 'Partial', 'class', 1 from parsed_files where project_id = %s",
+        (pid, pid))
+    crashed.execute(
         "insert into parsed_edges (project_id, from_file_id, to_file_id) "
         "select %s, a.id, b.id from parsed_files a, parsed_files b "
         "where a.project_id = %s and b.project_id = %s and a.id <> b.id", (pid, pid, pid))
@@ -131,6 +156,7 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
     assert job_row(conn, pid)["attempts"] == 2
     assert file_paths(conn, pid) == expected_sample_paths()  # exactly one row per file
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)  # and one per resolved import
+    assert type_rows(conn, pid) == SAMPLE_TYPES  # and one per declaration
 
 
 def test_stale_claim_is_reclaimed_without_restart(conn, user_id):

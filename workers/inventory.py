@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from extract import Imports, extract_imports
+from extract import Imports, TypeDecl, analyze_file
 from filters import MAX_FILE_BYTES, is_test, keep_path, lang_of
 
 
@@ -16,6 +16,7 @@ class FileRecord:
     is_test: bool
     content: str
     imports: Imports
+    types: list[TypeDecl]
 
 
 @dataclass
@@ -30,17 +31,19 @@ def count_loc(text: str) -> int:
 
 
 def process_file(rel_path: str, raw: bytes) -> FileRecord:
-    """One kept file → its inventory record, with its imports (Phase 6 adds types here)."""
+    """One kept file → its inventory record, with its imports and type declarations."""
     # Postgres text can't hold NUL; undecodable bytes become U+FFFD rather than failing.
     content = raw.decode("utf-8", errors="replace").replace("\x00", "")
     lang = lang_of(rel_path)
+    facts = analyze_file(rel_path, lang, content)
     return FileRecord(
         path=rel_path,
         lang=lang,
         loc=count_loc(content),
         is_test=is_test(rel_path),
         content=content,
-        imports=extract_imports(rel_path, lang, content),
+        imports=facts.imports,
+        types=facts.types,
     )
 
 

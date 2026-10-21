@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { UNGROUPED, defaultGroupLevel, groupCount, groupLevels, groupOf } from './levels.ts';
+import {
+	UNGROUPED,
+	defaultGroupLevel,
+	detailedLevelWithin,
+	groupCount,
+	groupLevels,
+	groupOf
+} from './levels.ts';
 import type { FileNode } from './types.ts';
 
 const files = (paths: string[]): FileNode[] =>
@@ -39,5 +46,14 @@ describe('grouping levels', () => {
 	it('falls back to level 1 when every level has >120 groups', () => {
 		const many = files(Array.from({ length: 130 }, (_, i) => `d${i}/f.ts`));
 		expect(defaultGroupLevel(many)).toBe(1);
+	});
+
+	it('Architecture: the most detailed folder level with ≤20 groups, never per-file', () => {
+		const paths: string[] = [];
+		for (let a = 0; a < 4; a++) for (let b = 0; b < 5; b++) paths.push(`a${a}/b${b}/f.ts`);
+		const fs = files(paths); // level 1 → 4 groups, level 2 → 20
+		expect(detailedLevelWithin(fs, 20)).toBe(2);
+		expect(detailedLevelWithin(fs, 19)).toBe(1);
+		expect(detailedLevelWithin(files(['x.ts', 'y.ts']), 20)).toBe(UNGROUPED); // no folders
 	});
 });
