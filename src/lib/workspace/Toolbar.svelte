@@ -6,14 +6,13 @@
 
 	let { ws }: { ws: Workspace } = $props();
 
-	// `ready: false` until the view's build phase lands (BUILD_PLAN.md Phases 6–7).
-	const TABS: { id: View; label: string; ready: boolean }[] = [
-		{ id: 'tree', label: 'Tree', ready: true },
-		{ id: 'treemap', label: 'Size map', ready: true },
-		{ id: 'graph', label: 'Dependencies', ready: true },
-		{ id: 'uml', label: 'Architecture', ready: true },
-		{ id: 'er', label: 'ER Diagram', ready: true },
-		{ id: 'hotspots', label: 'Hotspots', ready: false }
+	const TABS: { id: View; label: string }[] = [
+		{ id: 'tree', label: 'Tree' },
+		{ id: 'treemap', label: 'Size map' },
+		{ id: 'graph', label: 'Dependencies' },
+		{ id: 'uml', label: 'Architecture' },
+		{ id: 'er', label: 'ER Diagram' },
+		{ id: 'hotspots', label: 'Hotspots' }
 	];
 
 	const chips = $derived(langCounts(ws.graph.files, ws.hideTests));
@@ -28,8 +27,6 @@
 				role="tab"
 				class="tab"
 				aria-selected={ws.view === t.id}
-				disabled={!t.ready}
-				title={t.ready ? undefined : 'Coming in a later build phase'}
 				onclick={() => (ws.view = t.id)}>{t.label}</button
 			>
 		{/each}
@@ -97,19 +94,13 @@
 		cursor: pointer;
 	}
 
-	.tab:hover:not(:disabled) {
+	.tab:hover {
 		border-color: var(--line);
 	}
 
 	.tab[aria-selected='true'] {
 		color: var(--panel);
 		background: var(--ink);
-	}
-
-	.tab:disabled {
-		color: var(--muted);
-		opacity: 0.55;
-		cursor: not-allowed;
 	}
 
 	.chips {

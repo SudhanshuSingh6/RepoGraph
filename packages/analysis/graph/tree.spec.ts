@@ -7,7 +7,8 @@ const file = (path: string, lang: FileNode['lang'], loc: number): FileNode => ({
 	path,
 	lang,
 	loc,
-	isTest: false
+	isTest: false,
+	isEntry: false
 });
 
 const G: Graph = {

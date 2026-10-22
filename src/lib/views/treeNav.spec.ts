@@ -4,10 +4,10 @@ import { ancestry, findNode, folderPaths, searchHits } from './treeNav.ts';
 
 const graph: Graph = {
 	files: [
-		{ path: 'src/main/java/App.java', lang: 'java', loc: 10, isTest: false },
-		{ path: 'web/src/state/store.ts', lang: 'ts', loc: 5, isTest: false },
-		{ path: 'web/src/ui/render.ts', lang: 'ts', loc: 5, isTest: false },
-		{ path: 'setup.py', lang: 'py', loc: 3, isTest: false }
+		{ path: 'src/main/java/App.java', lang: 'java', loc: 10, isTest: false, isEntry: false },
+		{ path: 'web/src/state/store.ts', lang: 'ts', loc: 5, isTest: false, isEntry: false },
+		{ path: 'web/src/ui/render.ts', lang: 'ts', loc: 5, isTest: false, isEntry: false },
+		{ path: 'setup.py', lang: 'py', loc: 3, isTest: false, isEntry: false }
 	],
 	edges: []
 };

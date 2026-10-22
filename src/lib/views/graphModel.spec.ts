@@ -8,7 +8,8 @@ function graphOf(paths: string[], edges: [string, string][]): Graph {
 		path,
 		lang: path.endsWith('.py') ? 'py' : 'ts',
 		loc: 10,
-		isTest: false
+		isTest: false,
+		isEntry: false
 	}));
 	return { files, edges: edges.map(([a, b]) => [paths.indexOf(a), paths.indexOf(b)]) };
 }

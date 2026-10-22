@@ -11,7 +11,9 @@ export type {
 } from './types.ts';
 export {
 	langFamily,
+	nameLookup,
 	nameResolver,
+	referencedTypes,
 	resolveRelations,
 	resolveSupertypes,
 	simpleName

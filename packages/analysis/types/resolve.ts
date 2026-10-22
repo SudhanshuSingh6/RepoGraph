@@ -22,10 +22,11 @@ function folderOf(path: string): string {
  * the repo, only ever within the same `scope` — a language family, plus the ORM for
  * entities — so a name never matches an unrelated item that merely shares it.
  * Candidates, in order: the same file, the same folder, a file the referencing file
- * imports, then the only item with that name in scope. Anything else is external or
- * ambiguous, and resolves to null.
+ * imports, then the only item with that name in scope. Anything else is external
+ * (no candidates) or ambiguous (several, none preferred): `hit` is null, and
+ * `candidates` says which.
  */
-export function nameResolver<T extends { file: number; name: string }>(
+export function nameLookup<T extends { file: number; name: string }>(
 	items: T[],
 	files: FileNode[],
 	adj: number[][],
@@ -38,11 +39,16 @@ export function nameResolver<T extends { file: number; name: string }>(
 		if (list) list.push(i);
 		else byKey.set(key, [i]);
 	});
-	return (fromFile: number, scope: string, ref: string, exclude?: number): number | null => {
+	return (
+		fromFile: number,
+		scope: string,
+		ref: string,
+		exclude?: number
+	): { hit: number | null; candidates: number[] } => {
 		const candidates = (byKey.get(`${scope}\u0000${simpleName(ref)}`) ?? []).filter(
 			(i) => i !== exclude
 		);
-		if (candidates.length === 0) return null;
+		if (candidates.length === 0) return { hit: null, candidates };
 		const dir = folderOf(files[fromFile].path);
 		const imported = new Set(adj[fromFile]);
 		const tiers: ((i: number) => boolean)[] = [
@@ -52,10 +58,22 @@ export function nameResolver<T extends { file: number; name: string }>(
 		];
 		for (const inTier of tiers) {
 			const hit = candidates.find(inTier);
-			if (hit !== undefined) return hit;
+			if (hit !== undefined) return { hit, candidates };
 		}
-		return candidates.length === 1 ? candidates[0] : null;
+		return { hit: candidates.length === 1 ? candidates[0] : null, candidates };
 	};
+}
+
+/** `nameLookup`, keeping only the resolved item (null when external or ambiguous). */
+export function nameResolver<T extends { file: number; name: string }>(
+	items: T[],
+	files: FileNode[],
+	adj: number[][],
+	scopeOf: (item: T) => string
+) {
+	const lookup = nameLookup(items, files, adj, scopeOf);
+	return (fromFile: number, scope: string, ref: string, exclude?: number): number | null =>
+		lookup(fromFile, scope, ref, exclude).hit;
 }
 
 /** Every `extends`/`implements` that names a declaration in the same repo and language. */
@@ -98,4 +116,29 @@ export function resolveRelations(
 		}
 	});
 	return edges;
+}
+
+/**
+ * The types some declaration in a *different* file extends or implements (§14's
+ * dead-code cross-reference), matched within one language family. A name that's
+ * ambiguous between several types counts as a reference to each of them: for a
+ * "possibly unused" list, missing a candidate is safer than flagging a base class.
+ */
+export function referencedTypes(
+	types: TypeDecl[],
+	files: FileNode[],
+	adj: number[][]
+): Set<number> {
+	const scopeOf = (t: TypeDecl) => langFamily(files[t.file].lang);
+	const lookup = nameLookup(types, files, adj, scopeOf);
+	const used = new Set<number>();
+	types.forEach((t, child) => {
+		for (const ref of [...t.extends, ...t.implements]) {
+			const { hit, candidates } = lookup(t.file, scopeOf(t), ref, child);
+			for (const parent of hit !== null ? [hit] : candidates) {
+				if (types[parent].file !== t.file) used.add(parent);
+			}
+		}
+	});
+	return used;
 }

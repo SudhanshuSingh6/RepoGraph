@@ -136,6 +136,10 @@ def test_upload_import_produces_inventory(conn, user_id):
         "select path from parsed_files where project_id = %s and is_test", (pid,))}
     assert tests == {"web/src/api/client.test.ts", "backend/tests/test_routes.py",
                      "jobs/src/test/java/com/example/jobs/ReportJobTest.java"}
+    entries = {r["path"] for r in conn.execute(
+        "select path from parsed_files where project_id = %s and is_entry", (pid,))}
+    assert entries == {"backend/__init__.py", "backend/app.py", "web/src/index.ts",
+                       "jobs/src/main/java/com/example/jobs/JobsApplication.java"}
     content = conn.execute(
         "select content from parsed_files where project_id = %s and path = 'backend/models.py'",
         (pid,)).fetchone()["content"]

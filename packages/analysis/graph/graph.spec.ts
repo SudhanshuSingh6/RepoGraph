@@ -6,7 +6,13 @@ import type { FileNode, Graph, Lang } from './types.ts';
 function graphOf(paths: string[], edges: [string, string][], loc = 10): Graph {
 	const lang = (p: string): Lang =>
 		p.endsWith('.py') ? 'py' : p.endsWith('.java') ? 'java' : p.endsWith('.js') ? 'js' : 'ts';
-	const files: FileNode[] = paths.map((path) => ({ path, lang: lang(path), loc, isTest: false }));
+	const files: FileNode[] = paths.map((path) => ({
+		path,
+		lang: lang(path),
+		loc,
+		isTest: false,
+		isEntry: false
+	}));
 	const at = (p: string) => paths.indexOf(p);
 	return { files, edges: edges.map(([a, b]) => [at(a), at(b)]) };
 }

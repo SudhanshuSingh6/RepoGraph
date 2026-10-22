@@ -10,7 +10,8 @@ function repo(paths: string[], edges: [string, string][] = []) {
 		path,
 		lang: LANG[path.split('.').pop()!],
 		loc: 1,
-		isTest: false
+		isTest: false,
+		isEntry: false
 	}));
 	const graph: Graph = {
 		files,

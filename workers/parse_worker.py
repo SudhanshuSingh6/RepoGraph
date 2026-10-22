@@ -110,9 +110,9 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
                 ids = []
                 for f in inv.files:
                     cur.execute(
-                        "insert into parsed_files (project_id, path, lang, loc, is_test) "
-                        "values (%s, %s, %s, %s, %s) returning id",
-                        (job.project_id, f.path, f.lang, f.loc, f.is_test),
+                        "insert into parsed_files (project_id, path, lang, loc, is_test, is_entry) "
+                        "values (%s, %s, %s, %s, %s, %s) returning id",
+                        (job.project_id, f.path, f.lang, f.loc, f.is_test, f.is_entry),
                     )
                     ids.append(cur.fetchone()["id"])
                 write_contents(cur, [(i, f.content) for i, f in zip(ids, inv.files)])

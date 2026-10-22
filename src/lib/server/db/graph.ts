@@ -6,7 +6,7 @@ import { db } from './client';
 export async function getProjectGraph(projectId: string): Promise<Graph> {
 	const [fileRows, edgeRows] = await Promise.all([
 		db()`
-			select id, path, lang, loc, is_test from parsed_files
+			select id, path, lang, loc, is_test, is_entry from parsed_files
 			where project_id = ${projectId} order by path collate "C"
 		`,
 		db()`select from_file_id, to_file_id from parsed_edges where project_id = ${projectId}`
@@ -14,7 +14,7 @@ export async function getProjectGraph(projectId: string): Promise<Graph> {
 	const indexOf = new Map<string, number>();
 	const files: FileNode[] = fileRows.map((r, i) => {
 		indexOf.set(r.id, i);
-		return { path: r.path, lang: r.lang, loc: r.loc, isTest: r.is_test };
+		return { path: r.path, lang: r.lang, loc: r.loc, isTest: r.is_test, isEntry: r.is_entry };
 	});
 	const edges: Edge[] = edgeRows.map((r) => [
 		indexOf.get(r.from_file_id)!,

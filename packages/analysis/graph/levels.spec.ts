@@ -10,7 +10,7 @@ import {
 import type { FileNode } from './types.ts';
 
 const files = (paths: string[]): FileNode[] =>
-	paths.map((path) => ({ path, lang: 'ts', loc: 1, isTest: false }));
+	paths.map((path) => ({ path, lang: 'ts', loc: 1, isTest: false, isEntry: false }));
 
 describe('grouping levels', () => {
 	it('runs 1..maxDirDepth then ungrouped', () => {

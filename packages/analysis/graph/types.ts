@@ -1,6 +1,12 @@
 export type Lang = 'java' | 'js' | 'ts' | 'py';
 
-export type FileNode = { path: string; lang: Lang; loc: number; isTest: boolean };
+export type FileNode = {
+	path: string;
+	lang: Lang;
+	loc: number;
+	isTest: boolean;
+	isEntry: boolean; // looks like an entry point (§5.1): never "possibly unused"
+};
 
 /** An import edge as indexes into `Graph.files`: [importer, imported]. */
 export type Edge = [from: number, to: number];

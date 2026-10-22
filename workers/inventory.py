@@ -6,7 +6,7 @@ from pathlib import Path
 
 from entities import Entity
 from extract import Imports, TypeDecl, analyze_file
-from filters import MAX_FILE_BYTES, is_test, keep_path, lang_of
+from filters import MAX_FILE_BYTES, is_entry_point, is_test, keep_path, lang_of
 
 
 @dataclass
@@ -15,6 +15,7 @@ class FileRecord:
     lang: str
     loc: int
     is_test: bool
+    is_entry: bool
     content: str
     imports: Imports
     types: list[TypeDecl]
@@ -44,6 +45,7 @@ def process_file(rel_path: str, raw: bytes) -> FileRecord:
         lang=lang,
         loc=count_loc(content),
         is_test=is_test(rel_path),
+        is_entry=is_entry_point(rel_path, content),
         content=content,
         imports=facts.imports,
         types=facts.types,

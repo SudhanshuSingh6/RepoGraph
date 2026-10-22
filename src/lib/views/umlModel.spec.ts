@@ -7,7 +7,13 @@ import { classDiagram, componentDiagram } from './umlModel.ts';
 // package (no import) and by ReportJob from the `reports` sub-package (with an import).
 const J = 'jobs/src/main/java/com/example/jobs/';
 const paths = [J + 'BaseJob.java', J + 'CleanupJob.java', J + 'reports/ReportJob.java'];
-const files: FileNode[] = paths.map((path) => ({ path, lang: 'java', loc: 5, isTest: false }));
+const files: FileNode[] = paths.map((path) => ({
+	path,
+	lang: 'java',
+	loc: 5,
+	isTest: false,
+	isEntry: false
+}));
 const graph: Graph = { files, edges: [[2, 0]] };
 const d = derive(graph);
 const types: TypeDecl[] = [

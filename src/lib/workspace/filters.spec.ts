@@ -3,10 +3,10 @@ import type { FileNode } from '#analysis/graph/index.ts';
 import { activeMask, langCounts, matchesSearch } from './filters.ts';
 
 const files: FileNode[] = [
-	{ path: 'web/app.ts', lang: 'ts', loc: 10, isTest: false },
-	{ path: 'web/app.test.ts', lang: 'ts', loc: 5, isTest: true },
-	{ path: 'api/main.py', lang: 'py', loc: 20, isTest: false },
-	{ path: 'api/Job.java', lang: 'java', loc: 30, isTest: false }
+	{ path: 'web/app.ts', lang: 'ts', loc: 10, isTest: false, isEntry: false },
+	{ path: 'web/app.test.ts', lang: 'ts', loc: 5, isTest: true, isEntry: false },
+	{ path: 'api/main.py', lang: 'py', loc: 20, isTest: false, isEntry: false },
+	{ path: 'api/Job.java', lang: 'java', loc: 30, isTest: false, isEntry: false }
 ];
 
 describe('activeMask', () => {
