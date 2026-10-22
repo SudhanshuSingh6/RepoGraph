@@ -16,6 +16,7 @@
 		faded = false,
 		selected = false,
 		accent = false,
+		dim = false,
 		label,
 		onactivate,
 		ontip,
@@ -33,6 +34,7 @@
 		faded?: boolean;
 		selected?: boolean;
 		accent?: boolean;
+		dim?: boolean; // not matching the search box
 		label: string;
 		onactivate: () => void;
 		ontip: (e: PointerEvent) => void;
@@ -49,6 +51,7 @@
 	class:faded
 	class:sel={selected}
 	class:accent
+	class:dim
 	transform="translate({x},{y})"
 	role="button"
 	tabindex="0"
@@ -117,6 +120,10 @@
 
 	.box.faded {
 		opacity: 0.45;
+	}
+
+	.box.dim {
+		opacity: 0.28;
 	}
 
 	.box.faded rect {

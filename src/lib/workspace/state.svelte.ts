@@ -11,7 +11,14 @@ import {
 	type Lang,
 	type TreeNode
 } from '#analysis/graph/index.ts';
-import type { EntityDecl, TypeDecl } from '#analysis/types/index.ts';
+import { possiblyUnused } from '#analysis/hotspots/index.ts';
+import {
+	referencedTypes,
+	resolveRelations,
+	type EntityDecl,
+	type EntityEdge,
+	type TypeDecl
+} from '#analysis/types/index.ts';
 import { activeMask, type LangOn } from './filters.ts';
 import { LANG_NAMES } from './langs.ts';
 
@@ -80,6 +87,12 @@ export class Workspace {
 	readonly active: boolean[];
 	readonly derived: Derived;
 	readonly tree: TreeNode;
+	/** Every "possibly unused" file (§14), best candidates first; null until types load.
+	 * Hotspots shows the top of it, the side panel's overview its length. */
+	readonly unused: number[] | null;
+	/** ER relationships resolved to entities (§12); empty until entities load. */
+	readonly relations: EntityEdge[];
+	#referenced: Set<number> | null;
 
 	constructor(payload: GraphPayload, name: string, id: string) {
 		this.id = id;
@@ -93,6 +106,24 @@ export class Workspace {
 		this.active = $derived(activeMask(this.graph.files, this.langOn, this.hideTests));
 		this.derived = $derived(derive(this.graph, this.active));
 		this.tree = $derived(buildTree(this.graph, this.derived, this.name));
+		// The extends/implements cross-reference spans the whole repo, whatever the filters.
+		this.#referenced = $derived(
+			this.types ? referencedTypes(this.types, this.graph.files, this.full.adj) : null
+		);
+		this.unused = $derived(
+			this.types && this.#referenced
+				? possiblyUnused(
+						this.graph.files,
+						this.derived,
+						this.types.map((t) => t.file),
+						this.#referenced,
+						Infinity
+					)
+				: null
+		);
+		this.relations = $derived(
+			this.entities ? resolveRelations(this.entities, this.graph.files, this.full.adj) : []
+		);
 	}
 
 	/** Fetches `/types` once, the first time a view needs it. */

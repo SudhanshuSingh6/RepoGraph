@@ -1,7 +1,8 @@
 <script lang="ts">
 	// repograph-spec.md §12: ORM entities as field-list boxes, joined by relationships
 	// labelled with their cardinality, on the same layered layout as the Architecture view.
-	import { resolveRelations, type EntityEdge } from '#analysis/types/index.ts';
+	import type { EntityEdge } from '#analysis/types/index.ts';
+	import { matchesSearch } from '#lib/workspace/filters.ts';
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
 	import DiagramStage from './DiagramStage.svelte';
 	import UmlBox from './UmlBox.svelte';
@@ -26,15 +27,11 @@
 
 	$effect(() => ws.loadEntities());
 
-	const relations = $derived(
-		ws.entities ? resolveRelations(ws.entities, ws.graph.files, ws.full.adj) : []
-	);
-
 	const diagram = $derived.by(() => {
 		const entities = ws.entities;
 		if (!entities) return null;
 		const files = ws.graph.files;
-		const m = erDiagram(entities, relations, ws.active);
+		const m = erDiagram(entities, ws.relations, ws.active);
 		const index = new Map(m.shown.map((e, i) => [e, i]));
 		const items = m.shown.map((i) => {
 			const e = entities[i];
@@ -113,6 +110,7 @@
 				rows={b.rows}
 				more={b.more}
 				selected={ws.isSelectedEntity(b.entity)}
+				dim={!matchesSearch(ws.graph.files[ws.entities![b.entity].file].path, ws.search)}
 				label={b.label}
 				onactivate={() => (ws.selection = { entity: b.entity })}
 				ontip={b.tip}

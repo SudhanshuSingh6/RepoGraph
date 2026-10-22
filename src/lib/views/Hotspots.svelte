@@ -2,8 +2,8 @@
 	// repograph-spec.md §13/§14: five ranked cards — largest, most imported, most
 	// dependent, import cycles and possibly unused. Clicking a row selects its file.
 	import { UNGROUPED } from '#analysis/graph/index.ts';
-	import { importCycles, possiblyUnused, ranked } from '#analysis/hotspots/index.ts';
-	import { referencedTypes } from '#analysis/types/index.ts';
+	import { TOP, importCycles, ranked } from '#analysis/hotspots/index.ts';
+	import { matchesSearch } from '#lib/workspace/filters.ts';
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
 
 	let { ws }: { ws: Workspace } = $props();
@@ -25,18 +25,7 @@
 	const mostImported = $derived(ranked(files, ws.active, (i) => d.fanIn[i]));
 	const mostDependent = $derived(ranked(files, ws.active, (i) => d.fanOut[i]));
 	const cycles = $derived(importCycles(files, d));
-	// The cross-reference spans the whole repo (§14), whatever the filters hide.
-	const referenced = $derived(ws.types ? referencedTypes(ws.types, files, ws.full.adj) : null);
-	const unused = $derived(
-		ws.types && referenced
-			? possiblyUnused(
-					files,
-					d,
-					ws.types.map((t) => t.file),
-					referenced
-				)
-			: null
-	);
+	const unused = $derived(ws.unused?.slice(0, TOP) ?? null);
 
 	function viewInGraph(cycle: number[]) {
 		// Per-file Detail, so the selected file has a node of its own to highlight.
@@ -52,6 +41,7 @@
 			type="button"
 			class="row"
 			class:sel={ws.isSelectedFile(i)}
+			class:dim={!matchesSearch(files[i].path, ws.search)}
 			onclick={() => (ws.selection = { file: i })}
 		>
 			<span class="name">{base(i)}</span>
@@ -217,6 +207,10 @@
 	.row:hover,
 	.row:focus-visible {
 		background: var(--panel2);
+	}
+
+	.row.dim {
+		opacity: 0.28;
 	}
 
 	.row.sel {

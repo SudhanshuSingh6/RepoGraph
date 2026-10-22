@@ -2,6 +2,7 @@
 	// repograph-spec.md §11: component diagram (packages, layered by import depth), and a
 	// class diagram for any package.
 	import { resolveSupertypes } from '#analysis/types/index.ts';
+	import { matchesSearch } from '#lib/workspace/filters.ts';
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
 	import DiagramStage from './DiagramStage.svelte';
 	import UmlBox from './UmlBox.svelte';
@@ -26,6 +27,7 @@
 			faded: boolean;
 			selected: boolean;
 			accent: boolean;
+			matchFiles: number[]; // dims unless one of these matches the search box
 			label: string;
 			activate: () => void;
 			tip: (e: PointerEvent) => void;
@@ -69,8 +71,16 @@
 					faded: false,
 					selected: false,
 					accent: n.inCycle,
+					matchFiles: n.files,
 					label: `${n.id}, open class diagram`,
-					activate: () => (ws.umlFolder = n.id),
+					activate: () => {
+						ws.umlFolder = n.id;
+						// A root-level file is its own group, not a folder.
+						ws.selection =
+							n.files.length === 1 && files[n.files[0]].path === n.id
+								? { file: n.files[0] }
+								: { folder: n.id };
+					},
 					tip: (e: PointerEvent) =>
 						ws.showTip(e, n.id, [
 							['Files', fmt(n.files.length)],
@@ -110,6 +120,7 @@
 				faded: external,
 				selected: ws.isSelectedFile(t.file),
 				accent: false,
+				matchFiles: [t.file],
 				label: `${t.name}, ${t.kind} in ${path}`,
 				activate: () => (ws.selection = { file: t.file }),
 				tip: (e: PointerEvent) =>
@@ -213,6 +224,7 @@
 				faded={b.faded}
 				selected={b.selected}
 				accent={b.accent}
+				dim={b.matchFiles.every((i) => !matchesSearch(ws.graph.files[i].path, ws.search))}
 				label={b.label}
 				onactivate={b.activate}
 				ontip={b.tip}

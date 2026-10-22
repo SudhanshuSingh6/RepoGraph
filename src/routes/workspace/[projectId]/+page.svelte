@@ -12,9 +12,9 @@
 	import ErControls from '#lib/views/ErControls.svelte';
 	import Uml from '#lib/views/Uml.svelte';
 	import UmlControls from '#lib/views/UmlControls.svelte';
-	import { LANG_NAMES } from '#lib/workspace/langs.ts';
 	import { Workspace, type GraphPayload } from '#lib/workspace/state.svelte.ts';
 	import Tip from '#lib/workspace/Tip.svelte';
+	import SidePanel from '#lib/workspace/SidePanel.svelte';
 	import Toolbar from '#lib/workspace/Toolbar.svelte';
 	import type { PageProps } from './$types';
 
@@ -118,27 +118,7 @@
 				{/if}
 			</div>
 			<div class="main">
-				<aside class="side" aria-live="polite">
-					<h2>Languages</h2>
-					<div class="bar" role="img" aria-label="Lines of code by language">
-						{#each current.summary.languages as l (l.lang)}
-							<span
-								style:width="{(l.lines / Math.max(current.summary.lines, 1)) * 100}%"
-								style:background="var(--lang-{l.lang})"
-							></span>
-						{/each}
-					</div>
-					<ul>
-						{#each current.summary.languages as l (l.lang)}
-							<li class="lrow">
-								<i style:background="var(--lang-{l.lang})"></i>
-								<span>{LANG_NAMES[l.lang as keyof typeof LANG_NAMES] ?? l.lang}</span>
-								<span class="num">{fmt(l.files)} {l.files === 1 ? 'file' : 'files'}</span>
-								<span class="num">{fmt(l.lines)} lines</span>
-							</li>
-						{/each}
-					</ul>
-				</aside>
+				<SidePanel {ws} />
 				<div class="stage" role="tabpanel" aria-label="Active view">
 					{#if ws.view === 'tree'}
 						<Tree {ws} />
@@ -284,16 +264,11 @@
 		grid-template-columns: 300px 1fr 380px;
 	}
 
-	.side,
 	.chat-panel {
 		min-height: 0;
 		overflow: auto;
 		padding: 18px;
 		background: var(--panel);
-	}
-
-	.side {
-		border-right: 1px solid var(--line);
 	}
 
 	.chat-panel {
@@ -323,7 +298,7 @@
 			height: 62vh;
 		}
 
-		.side {
+		.main > :global(.side) {
 			order: 2;
 			border-right: none;
 			border-top: 1px solid var(--line);
@@ -350,41 +325,6 @@
 		margin: 0 0 12px;
 		font-family: var(--font-display);
 		font-size: 18px;
-	}
-
-	.bar {
-		display: flex;
-		height: 10px;
-		border-radius: 999px;
-		overflow: hidden;
-		background: var(--panel2);
-	}
-
-	ul {
-		list-style: none;
-		margin: 14px 0 0;
-		padding: 0;
-	}
-
-	.lrow {
-		display: grid;
-		grid-template-columns: 12px 1fr auto auto;
-		align-items: center;
-		gap: 10px;
-		padding: 4px 0;
-	}
-
-	.lrow i {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-	}
-
-	.num {
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums;
-		color: var(--muted);
-		text-align: right;
 	}
 
 	.err {
