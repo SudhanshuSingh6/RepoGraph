@@ -1,7 +1,7 @@
 """Processes one claimed parse job: fetch source → build inventory (with each file's
-imports and type declarations) → resolve imports to edges → store files, edges, types.
+imports, type declarations and entities) → resolve imports to edges → store them all.
 
-All parsed rows for the job (files, edges, types), plus the job's own `done` transition, are written in ONE
+All parsed rows for the job (files, edges, types, entities), plus the job's own `done` transition, are written in ONE
 transaction that first deletes any rows from a previous attempt. A crash mid-parse
 therefore leaves nothing behind, and a retry starts from a clean slate. The final
 transition is conditioned on this attempt still owning the claim, so an attempt that
@@ -10,10 +10,11 @@ was reclaimed as stale (and possibly re-run elsewhere) can't commit over the new
 
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from file_storage import write_contents
 from inventory import build_inventory
@@ -126,6 +127,15 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
                     "values (%s, %s, %s, %s, %s, %s, %s)",
                     [(job.project_id, i, t.name, t.kind, list(t.extends), list(t.implements),
                       t.line) for i, f in zip(ids, inv.files) for t in f.types],
+                )
+                cur.executemany(
+                    "insert into parsed_entities "
+                    "(project_id, file_id, name, table_name, orm, fields, relations, line) "
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    [(job.project_id, i, e.name, e.table, e.orm,
+                      Jsonb([asdict(x) for x in e.fields]),
+                      Jsonb([asdict(x) for x in e.relations]), e.line)
+                     for i, f in zip(ids, inv.files) for e in f.entities],
                 )
             finish(conn, job, "done", None)
             conn.execute(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { derive, type FileNode, type Graph, type Lang } from '../graph/index.ts';
-import { resolveSupertypes, simpleName } from './resolve.ts';
-import type { TypeDecl } from './types.ts';
+import { resolveRelations, resolveSupertypes, simpleName } from './resolve.ts';
+import type { EntityDecl, Orm, RelationKind, TypeDecl } from './types.ts';
 
 const LANG: Record<string, Lang> = { java: 'java', py: 'py', ts: 'ts', js: 'js' };
 
@@ -98,5 +98,76 @@ describe('resolveSupertypes', () => {
 		const r = repo(['a/view.ts']);
 		const types = [decl(0, 'Component', ['React.Component'])];
 		expect(resolveSupertypes(types, r.files, r.adj)).toEqual([]);
+	});
+});
+
+function entity(
+	file: number,
+	name: string,
+	orm: Orm,
+	relations: [string, RelationKind, string][] = []
+): EntityDecl {
+	return {
+		file,
+		name,
+		table: name,
+		orm,
+		fields: [],
+		relations: relations.map(([field, kind, target]) => ({ field, kind, target })),
+		line: 1
+	};
+}
+
+describe('resolveRelations', () => {
+	it("doesn't link the sample's SQLAlchemy Customer to its JPA Order", () => {
+		const r = repo(['backend/models.py', 'jobs/model/Order.java']);
+		const entities = [
+			entity(0, 'Customer', 'sqlalchemy', [['orders', 'RelatedTo', 'Order']]),
+			entity(1, 'Order', 'jpa')
+		];
+		expect(resolveRelations(entities, r.files, r.adj)).toEqual([]);
+	});
+
+	it('links to a same-named entity of the same ORM, never another ORM or language', () => {
+		const r = repo(['backend/models.py', 'shop/orders.py', 'jobs/Order.java', 'web/order.ts']);
+		const entities = [
+			entity(0, 'Customer', 'sqlalchemy', [['orders', 'RelatedTo', 'Order']]),
+			entity(1, 'Order', 'django'), // same language, other ORM
+			entity(2, 'Order', 'jpa'),
+			entity(3, 'Order', 'typeorm'),
+			entity(1, 'Order', 'sqlalchemy') // the only real match
+		];
+		expect(resolveRelations(entities, r.files, r.adj)).toEqual([
+			{ from: 0, to: 4, field: 'orders', kind: 'RelatedTo' }
+		]);
+	});
+
+	it('resolves qualified targets, self-references and leaves unknown ones unlinked', () => {
+		const r = repo(['library/models.py', 'shop/models.py']);
+		const entities = [
+			entity(0, 'Book', 'django', [
+				['tags', 'N–N', 'library.Tag'],
+				['sequel', '1–1', 'Book'],
+				['owner', 'N–1', 'auth.User']
+			]),
+			entity(0, 'Tag', 'django'),
+			entity(1, 'Tag', 'django')
+		];
+		// Two Tags: the one in Book's own file wins.
+		expect(resolveRelations(entities, r.files, r.adj)).toEqual([
+			{ from: 0, to: 1, field: 'tags', kind: 'N–N' },
+			{ from: 0, to: 0, field: 'sequel', kind: '1–1' }
+		]);
+	});
+
+	it('treats JS and TS TypeORM entities as one namespace', () => {
+		const r = repo(['src/user.ts', 'src/photo.js']);
+		const entities = [
+			entity(0, 'User', 'typeorm', [['photos', '1–N', 'Photo']]),
+			entity(1, 'Photo', 'typeorm')
+		];
+		expect(resolveRelations(entities, r.files, r.adj)).toEqual([
+			{ from: 0, to: 1, field: 'photos', kind: '1–N' }
+		]);
 	});
 });

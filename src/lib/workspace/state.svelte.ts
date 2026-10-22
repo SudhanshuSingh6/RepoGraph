@@ -11,7 +11,7 @@ import {
 	type Lang,
 	type TreeNode
 } from '#analysis/graph/index.ts';
-import type { TypeDecl } from '#analysis/types/index.ts';
+import type { EntityDecl, TypeDecl } from '#analysis/types/index.ts';
 import { activeMask, type LangOn } from './filters.ts';
 import { LANG_NAMES } from './langs.ts';
 
@@ -26,7 +26,8 @@ export type GraphPayload = {
 
 export type View = 'tree' | 'treemap' | 'graph' | 'uml' | 'er' | 'hotspots';
 
-export type Selection = { file: number } | { folder: string } | null;
+/** `entity` indexes `Workspace.entities` (names aren't unique across ORMs). */
+export type Selection = { file: number } | { folder: string } | { entity: number } | null;
 
 export type ColorBy = 'lang' | 'fanIn' | 'fanOut' | 'cycles';
 
@@ -70,7 +71,10 @@ export class Workspace {
 	umlFolder = $state<string | null>(null);
 	types = $state.raw<TypeDecl[] | null>(null);
 	typesError = $state<string | null>(null);
-	#typesRequested = false;
+	// ER Diagram (§12): entities, likewise loaded on first use.
+	entities = $state.raw<EntityDecl[] | null>(null);
+	entitiesError = $state<string | null>(null);
+	#requested: Record<string, boolean> = {}; // not reactive: only gates the fetch
 
 	// `refresh()` in the prototype: re-derived whenever a filter changes.
 	readonly active: boolean[];
@@ -93,17 +97,41 @@ export class Workspace {
 
 	/** Fetches `/types` once, the first time a view needs it. */
 	loadTypes() {
-		if (this.#typesRequested) return;
-		this.#typesRequested = true;
-		fetch(`/api/projects/${this.id}/types`)
+		this.#load<{ types: TypeDecl[] }>(
+			'types',
+			'classes',
+			(body) => (this.types = body.types),
+			(message) => (this.typesError = message)
+		);
+	}
+
+	/** Fetches `/entities` once, the first time the ER Diagram opens. */
+	loadEntities() {
+		this.#load<{ entities: EntityDecl[] }>(
+			'entities',
+			'entities',
+			(body) => (this.entities = body.entities),
+			(message) => (this.entitiesError = message)
+		);
+	}
+
+	#load<T>(path: string, what: string, done: (body: T) => void, fail: (msg: string) => void) {
+		if (this.#requested[path]) return;
+		this.#requested[path] = true;
+		fetch(`/api/projects/${this.id}/${path}`)
 			.then(async (res) => {
-				if (!res.ok) throw new Error(`The classes couldn't be loaded (${res.status}).`);
-				this.types = ((await res.json()) as { types: TypeDecl[] }).types;
+				if (!res.ok) throw new Error(`The ${what} couldn't be loaded (${res.status}).`);
+				done((await res.json()) as T);
 			})
 			.catch((e: Error) => {
-				this.typesError = e.message;
-				this.#typesRequested = false;
+				fail(e.message);
+				this.#requested[path] = false; // the next visit tries again
 			});
+	}
+
+	isSelectedEntity(i: number): boolean {
+		const sel = this.selection;
+		return sel !== null && 'entity' in sel && sel.entity === i;
 	}
 
 	toggleLang(lang: Lang) {

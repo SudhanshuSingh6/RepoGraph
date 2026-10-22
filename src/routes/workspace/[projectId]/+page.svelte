@@ -7,6 +7,8 @@
 	import TreeControls from '#lib/views/TreeControls.svelte';
 	import Treemap from '#lib/views/Treemap.svelte';
 	import TreemapControls from '#lib/views/TreemapControls.svelte';
+	import Er from '#lib/views/Er.svelte';
+	import ErControls from '#lib/views/ErControls.svelte';
 	import Uml from '#lib/views/Uml.svelte';
 	import UmlControls from '#lib/views/UmlControls.svelte';
 	import { LANG_NAMES } from '#lib/workspace/langs.ts';
@@ -108,6 +110,8 @@
 					<GraphControls {ws} />
 				{:else if ws.view === 'uml'}
 					<UmlControls {ws} />
+				{:else if ws.view === 'er'}
+					<ErControls />
 				{/if}
 			</div>
 			<div class="main">
@@ -141,6 +145,8 @@
 						<Graph {ws} />
 					{:else if ws.view === 'uml'}
 						<Uml {ws} />
+					{:else if ws.view === 'er'}
+						<Er {ws} />
 					{/if}
 				</div>
 				<div class="chat-panel">

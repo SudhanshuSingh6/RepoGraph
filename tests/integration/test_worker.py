@@ -92,6 +92,28 @@ SAMPLE_TYPES = sorted([
 ])
 
 
+def entity_rows(conn, pid):
+    rows = conn.execute(
+        "select f.path, e.name, e.table_name, e.orm, e.fields, e.relations from parsed_entities e "
+        "join parsed_files f on f.id = e.file_id where e.project_id = %s", (pid,)).fetchall()
+    return sorted((r["path"].rsplit("/", 1)[1], r["name"], r["table_name"], r["orm"],
+                   r["fields"], r["relations"]) for r in rows)
+
+
+SAMPLE_ENTITIES = [
+    ("Order.java", "Order", "orders", "jpa", [
+        {"name": "id", "type": "Long", "pk": True},
+        {"name": "customerId", "type": "Long", "pk": False},
+        {"name": "status", "type": "String", "pk": False},
+    ], []),
+    ("models.py", "Customer", "customers", "sqlalchemy", [
+        {"name": "id", "type": "Integer", "pk": True},
+        {"name": "name", "type": "String", "pk": False},
+        {"name": "email", "type": "String", "pk": False},
+    ], [{"field": "orders", "kind": "RelatedTo", "target": "Order"}]),
+]
+
+
 def expected_sample_paths():
     return sorted(p.relative_to(FIXTURE).as_posix() for p in FIXTURE.rglob("*")
                   if p.is_file() and p.suffix in {".ts", ".js", ".py", ".java"})
@@ -120,6 +142,7 @@ def test_upload_import_produces_inventory(conn, user_id):
     assert content == (FIXTURE / "backend/models.py").read_text()
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)
     assert type_rows(conn, pid) == SAMPLE_TYPES
+    assert entity_rows(conn, pid) == SAMPLE_ENTITIES
     # Cleanup: the archive is gone once the job ends.
     assert conn.execute("select count(*) n from project_uploads").fetchone()["n"] == 0
 
@@ -157,6 +180,7 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
     assert file_paths(conn, pid) == expected_sample_paths()  # exactly one row per file
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)  # and one per resolved import
     assert type_rows(conn, pid) == SAMPLE_TYPES  # and one per declaration
+    assert entity_rows(conn, pid) == SAMPLE_ENTITIES  # and one per entity
 
 
 def test_stale_claim_is_reclaimed_without_restart(conn, user_id):

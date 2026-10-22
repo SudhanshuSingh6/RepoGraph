@@ -12,7 +12,7 @@
 		{ id: 'treemap', label: 'Size map', ready: true },
 		{ id: 'graph', label: 'Dependencies', ready: true },
 		{ id: 'uml', label: 'Architecture', ready: true },
-		{ id: 'er', label: 'ER Diagram', ready: false },
+		{ id: 'er', label: 'ER Diagram', ready: true },
 		{ id: 'hotspots', label: 'Hotspots', ready: false }
 	];
 

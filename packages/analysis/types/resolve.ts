@@ -1,5 +1,5 @@
 import type { FileNode, Lang } from '../graph/types.ts';
-import type { TypeDecl, TypeEdge } from './types.ts';
+import type { EntityDecl, EntityEdge, TypeDecl, TypeEdge } from './types.ts';
 
 /** JS and TS share one namespace (a .ts class can extend a .js one); the other
  * languages only ever reference their own. */
@@ -73,6 +73,28 @@ export function resolveSupertypes(
 				const parent = resolve(t.file, scopeOf(t), ref, child);
 				if (parent !== null) edges.push({ child, parent, kind });
 			}
+		}
+	});
+	return edges;
+}
+
+/**
+ * Every relationship whose target names an entity of the same ORM in the same language
+ * — a SQLAlchemy `relationship("Order")` names a class in its own registry, never a JPA
+ * `Order`. A relationship back to its own entity (Django's `'self'`) is an edge too.
+ */
+export function resolveRelations(
+	entities: EntityDecl[],
+	files: FileNode[],
+	adj: number[][]
+): EntityEdge[] {
+	const scopeOf = (e: EntityDecl) => `${langFamily(files[e.file].lang)}:${e.orm}`;
+	const resolve = nameResolver(entities, files, adj, scopeOf);
+	const edges: EntityEdge[] = [];
+	entities.forEach((e, from) => {
+		for (const r of e.relations) {
+			const to = resolve(e.file, scopeOf(e), r.target);
+			if (to !== null) edges.push({ from, to, field: r.field, kind: r.kind });
 		}
 	});
 	return edges;

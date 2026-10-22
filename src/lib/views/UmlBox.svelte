@@ -1,6 +1,8 @@
 <script lang="ts">
 	// A UML-style box (repograph-spec.md §11/§12): italic stereotype, bold title, mono
-	// subtitle. Shared by the component, class and ER diagrams.
+	// subtitle and, for ER entities, a field list. Shared by the component, class and ER
+	// diagrams; `boxHeight` sizes one.
+	import { FIELD_ROW, boxHeight } from './umlBoxSize.ts';
 	let {
 		x,
 		y,
@@ -9,6 +11,8 @@
 		title,
 		stereotype = null,
 		subtitle = null,
+		rows = [],
+		more = 0,
 		faded = false,
 		selected = false,
 		accent = false,
@@ -24,6 +28,8 @@
 		title: string;
 		stereotype?: string | null;
 		subtitle?: string | null;
+		rows?: { text: string; bold: boolean }[];
+		more?: number;
 		faded?: boolean;
 		selected?: boolean;
 		accent?: boolean;
@@ -35,6 +41,7 @@
 
 	const STEREO_H = 16;
 	const top = $derived(stereotype ? STEREO_H + 8 : 8);
+	const divider = $derived(boxHeight(stereotype !== null, 0, false) - 8);
 </script>
 
 <g
@@ -66,6 +73,19 @@
 	<text class="title" x={w / 2} y={top + 14}>{title}</text>
 	{#if subtitle}
 		<text class="sub" x={w / 2} y={top + 31}>{subtitle}</text>
+	{/if}
+	{#if rows.length || more}
+		<line class="div" x1="0" x2={w} y1={divider} y2={divider} />
+		{#each rows as r, i (i)}
+			<text class="row" class:pk={r.bold} x="10" y={divider + FIELD_ROW * (i + 1) - 3}>
+				{r.text}
+			</text>
+		{/each}
+		{#if more}
+			<text class="row more" x="10" y={divider + FIELD_ROW * (rows.length + 1) - 3}>
+				+{more} more
+			</text>
+		{/if}
 	{/if}
 </g>
 
@@ -118,6 +138,25 @@
 	.title {
 		font-size: 13.5px;
 		font-weight: 700;
+	}
+
+	.div {
+		stroke: var(--line);
+	}
+
+	.row {
+		text-anchor: start;
+		font-family: var(--font-mono);
+		font-size: 11px;
+	}
+
+	.row.pk {
+		font-weight: 700;
+	}
+
+	.row.more {
+		fill: var(--muted);
+		font-style: italic;
 	}
 
 	.sub {

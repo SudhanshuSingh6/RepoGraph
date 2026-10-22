@@ -71,7 +71,7 @@
 
 	function nodeIsSelected(d: SimNode): boolean {
 		const sel = ws.selection;
-		if (!sel) return false;
+		if (!sel || 'entity' in sel) return false;
 		if ('folder' in sel) return sel.folder === d.id;
 		return (
 			d.files.length === 1 && d.id === ws.graph.files[d.files[0]].path && sel.file === d.files[0]

@@ -1,5 +1,6 @@
 """Extracts per-file facts with tree-sitter, parsing each file once: its import
-statements (repograph-spec.md §6) and its class/interface declarations (§11).
+statements (repograph-spec.md §6), its class/interface declarations (§11) and, among
+those classes, its ORM entities (§12, in entities.py).
 
 Replaces the prototype's regex `parseFile`/`extractTypes`: the AST already separates
 comments and strings from code, so a commented-out import or class never counts and
@@ -14,6 +15,8 @@ import tree_sitter_javascript
 import tree_sitter_python
 import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser, Query, QueryCursor
+
+from entities import Entity, extract_entities
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,7 @@ class TypeDecl:
 class FileFacts:
     imports: Imports
     types: list[TypeDecl]
+    entities: list[Entity] = field(default_factory=list)
 
 
 JS_QUERY = """
@@ -200,9 +204,9 @@ JAVA_KINDS = {"class_declaration": "class", "interface_declaration": "interface"
               "enum_declaration": "enum", "record_declaration": "record"}
 
 
-def _java_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+def _java_types(classes: list[Node]) -> list[TypeDecl]:
     out = []
-    for node in _in_order(g.captures(root, "types").get("t", [])):
+    for node in classes:
         name = node.child_by_field_name("name")
         if name is None:
             continue
@@ -225,9 +229,9 @@ def _java_types(g: _Grammar, root: Node) -> list[TypeDecl]:
     return out
 
 
-def _js_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+def _js_types(classes: list[Node]) -> list[TypeDecl]:
     out = []
-    for node in _in_order(g.captures(root, "types").get("t", [])):
+    for node in classes:
         name = node.child_by_field_name("name")
         if name is None:
             continue
@@ -251,9 +255,9 @@ def _js_types(g: _Grammar, root: Node) -> list[TypeDecl]:
     return out
 
 
-def _py_types(g: _Grammar, root: Node) -> list[TypeDecl]:
+def _py_types(classes: list[Node]) -> list[TypeDecl]:
     out = []
-    for node in _in_order(g.captures(root, "types").get("t", [])):
+    for node in classes:
         name = node.child_by_field_name("name")
         if name is None:
             continue
@@ -276,11 +280,13 @@ def analyze_file(path: str, lang: str, content: str) -> FileFacts:
     """Parses the file once and extracts everything the worker stores about it."""
     g = _grammar(_grammar_key(path, lang))
     root = g.parse(content.encode("utf-8"))
+    classes = _in_order(g.captures(root, "types").get("t", []))
+    entities = extract_entities(lang, classes)
     if lang == "py":
-        return FileFacts(_python(g, root), _py_types(g, root))
+        return FileFacts(_python(g, root), _py_types(classes), entities)
     if lang == "java":
-        return FileFacts(_java(g, root), _java_types(g, root))
-    return FileFacts(_js(g, root), _js_types(g, root))
+        return FileFacts(_java(g, root), _java_types(classes), entities)
+    return FileFacts(_js(g, root), _js_types(classes), entities)
 
 
 def extract_imports(path: str, lang: str, content: str) -> Imports:
