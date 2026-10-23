@@ -24,6 +24,7 @@
 				{#if data.user.avatarUrl}
 					<img class="avatar" src={data.user.avatarUrl} alt="" width="24" height="24" />
 				{/if}
+				<a class="nav" href={resolve('/projects')}>Projects</a>
 				<span class="username">{data.user.username}</span>
 				<form method="post" action={resolve('/auth/logout')}>
 					<button class="btn" type="submit">Log out</button>
@@ -74,6 +75,17 @@
 	.avatar {
 		border-radius: 50%;
 		border: 1px solid var(--line);
+	}
+
+	.nav {
+		font-weight: 600;
+		color: var(--ink);
+		text-decoration: none;
+		margin-right: 6px;
+	}
+
+	.nav:hover {
+		color: var(--accent);
 	}
 
 	.username {

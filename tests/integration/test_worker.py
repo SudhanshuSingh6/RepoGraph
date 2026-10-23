@@ -187,6 +187,24 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
     assert entity_rows(conn, pid) == SAMPLE_ENTITIES  # and one per entity
 
 
+def test_deleting_a_project_removes_everything_parsed(conn, user_id):
+    """Phase 9's delete action: one `delete from projects` cascades to every child row."""
+    pid = create_upload_project(conn, user_id, zip_dir(FIXTURE, "sample-project-main"))
+    assert worker_loop.process_one(conn, SETTINGS)
+    tables = ["parse_jobs", "project_uploads", "parsed_files", "parsed_edges", "parsed_types",
+              "parsed_entities"]
+
+    def counts():
+        return {t: conn.execute(f"select count(*)::int n from {t} where project_id = %s",
+                                (pid,)).fetchone()["n"] for t in tables}
+
+    before = counts()
+    assert before["parsed_files"] and before["parsed_edges"] and before["parsed_types"] \
+        and before["parsed_entities"] and before["parse_jobs"]
+    conn.execute("delete from projects where id = %s and owner_id = %s", (pid, user_id))
+    assert counts() == dict.fromkeys(tables, 0)
+
+
 def test_stale_claim_is_reclaimed_without_restart(conn, user_id):
     pid = create_upload_project(conn, user_id, zip_dir(FIXTURE, "s"))
     worker_loop.claim(conn)  # a worker claims it… and hangs

@@ -93,3 +93,43 @@ export async function getProjectSummary(projectId: string): Promise<ProjectSumma
 		languages
 	};
 }
+
+export type ProjectListItem = Pick<
+	Project,
+	'id' | 'name' | 'source' | 'githubOwner' | 'githubRepo' | 'status' | 'parsedAt' | 'createdAt'
+> & { files: number };
+
+/** A user's projects for the /projects list, newest first. */
+export async function listProjects(ownerId: string): Promise<ProjectListItem[]> {
+	const rows = await db()`
+		select p.id, p.name, p.source, p.github_owner, p.github_repo, p.status, p.parsed_at,
+			p.created_at,
+			(select count(*)::int from parsed_files f where f.project_id = p.id) as files
+		from projects p
+		where p.owner_id = ${ownerId}
+		order by p.created_at desc
+	`;
+	return rows.map((r) => ({
+		id: r.id,
+		name: r.name,
+		source: r.source,
+		githubOwner: r.github_owner,
+		githubRepo: r.github_repo,
+		status: r.status,
+		parsedAt: r.parsed_at,
+		createdAt: r.created_at,
+		files: r.files
+	}));
+}
+
+/** Deletes a project its owner asked to delete; false if it isn't theirs (or doesn't
+ * exist). Its jobs, upload and parsed rows go with it (`on delete cascade`). A job
+ * mid-parse holds locks on the row, so this waits for that transaction to end; the
+ * worker then finds its job gone and drops the attempt. */
+export async function deleteProject(id: string, ownerId: string): Promise<boolean> {
+	if (!UUID.test(id)) return false;
+	const rows = await db()`
+		delete from projects where id = ${id} and owner_id = ${ownerId} returning id
+	`;
+	return rows.length === 1;
+}
