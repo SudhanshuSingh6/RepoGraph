@@ -1,5 +1,6 @@
 import { isHttpError, redirect } from '@sveltejs/kit';
 import { requireProjectAccess } from '#lib/server/auth/guards.ts';
+import { chatAvailable } from '#lib/server/chat/keys.ts';
 import { getProjectSummary } from '#lib/server/db/projects.ts';
 import type { PageServerLoad } from './$types';
 
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async (event) => {
 			errorMessage: project.errorMessage,
 			skippedLargeFiles: project.skippedLargeFiles
 		},
-		summary: project.status === 'ready' ? await getProjectSummary(project.id) : null
+		summary: project.status === 'ready' ? await getProjectSummary(project.id) : null,
+		chat: { available: chatAvailable(), signedIn: event.locals.user !== null }
 	};
 };

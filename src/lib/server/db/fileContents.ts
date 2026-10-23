@@ -10,3 +10,13 @@ export async function selectFileContent(fileId: string): Promise<string | null> 
 export async function updateFileContent(fileId: string, text: string): Promise<void> {
 	await db()`update parsed_files set content = ${text} where id = ${fileId}`;
 }
+
+export async function selectFileContentByPath(
+	projectId: string,
+	path: string
+): Promise<string | null> {
+	const [row] = await db()`
+		select content from parsed_files where project_id = ${projectId} and path = ${path}
+	`;
+	return row?.content ?? null;
+}

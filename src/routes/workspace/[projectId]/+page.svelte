@@ -14,6 +14,7 @@
 	import UmlControls from '#lib/views/UmlControls.svelte';
 	import { Workspace, type GraphPayload } from '#lib/workspace/state.svelte.ts';
 	import Tip from '#lib/workspace/Tip.svelte';
+	import ChatPanel from '#lib/workspace/ChatPanel.svelte';
 	import SidePanel from '#lib/workspace/SidePanel.svelte';
 	import Toolbar from '#lib/workspace/Toolbar.svelte';
 	import type { PageProps } from './$types';
@@ -134,9 +135,7 @@
 						<Hotspots {ws} />
 					{/if}
 				</div>
-				<div class="chat-panel">
-					<h2>Ask the codebase</h2>
-				</div>
+				<ChatPanel {ws} available={data.chat.available} signedIn={data.chat.signedIn} />
 			</div>
 		</section>
 		<Tip tip={ws.tip} />
@@ -264,17 +263,6 @@
 		grid-template-columns: 300px 1fr 380px;
 	}
 
-	.chat-panel {
-		min-height: 0;
-		overflow: auto;
-		padding: 18px;
-		background: var(--panel);
-	}
-
-	.chat-panel {
-		border-left: 1px solid var(--line);
-	}
-
 	.stage {
 		position: relative;
 		min-width: 0;
@@ -304,7 +292,7 @@
 			border-top: 1px solid var(--line);
 		}
 
-		.chat-panel {
+		.main > :global(.chat-panel) {
 			order: 3;
 			height: 60vh;
 			border-left: none;

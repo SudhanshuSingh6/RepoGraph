@@ -11,6 +11,15 @@ const positiveInt = (name: string, fallback: number) => (value: string | undefin
 	return n;
 };
 
+// Chat API keys are encrypted with this (AES-256-GCM), so it must decode to 32 bytes.
+const keySecret = (value: string | undefined) => {
+	if (!value) return undefined;
+	if (Buffer.from(value, 'base64').length !== 32) {
+		throw new Error('CHAT_KEY_SECRET must be 32 random bytes, base64 (openssl rand -base64 32)');
+	}
+	return value;
+};
+
 export const variables = defineEnvVars({
 	DATABASE_URL: {
 		description: 'Postgres connection string, e.g. postgres://user:pass@localhost:5432/repograph',
@@ -27,6 +36,11 @@ export const variables = defineEnvVars({
 	GITHUB_CALLBACK_URL: {
 		description: 'OAuth callback, e.g. http://localhost:5173/auth/github/callback',
 		schema: optional
+	},
+	CHAT_KEY_SECRET: {
+		description:
+			"Encrypts users' chat API keys at rest: 32 random bytes, base64. Chat is unavailable without it.",
+		schema: keySecret
 	},
 	IMPORT_MAX_BYTES: {
 		description: 'Import size cap in bytes (upload size, and decompressed/cloned size)',

@@ -38,6 +38,14 @@ export type Selection = { file: number } | { folder: string } | { entity: number
 
 export type ColorBy = 'lang' | 'fanIn' | 'fanOut' | 'cycles';
 
+/** A chat bubble. `failed` marks an error reply; its question is not resent as history. */
+export type ChatMessage = {
+	role: 'user' | 'assistant';
+	text: string;
+	failed?: boolean;
+	filesRead?: string[];
+};
+
 export type Tip = { x: number; y: number; title: string; rows: [string, string][] };
 
 /** One open project's view and filter state (the prototype's `S`). */
@@ -56,6 +64,8 @@ export class Workspace {
 	search = $state('');
 	selection = $state<Selection>(null);
 	tip = $state<Tip | null>(null);
+	/** The chat conversation (§17): kept while the project is open, not saved. */
+	chat = $state<ChatMessage[]>([]);
 
 	// Tree: expanded folder paths; the root starts open, showing the top level.
 	treeExpanded = new SvelteSet<string>(['']);
