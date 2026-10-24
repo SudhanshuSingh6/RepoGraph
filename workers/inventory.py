@@ -6,6 +6,7 @@ from pathlib import Path
 
 from entities import Entity
 from extract import Imports, TypeDecl, analyze_file
+from flows import FlowFacts
 from filters import MAX_FILE_BYTES, is_entry_point, is_test, keep_path, lang_of
 
 
@@ -20,6 +21,7 @@ class FileRecord:
     imports: Imports
     types: list[TypeDecl]
     entities: list[Entity]
+    flows: FlowFacts
 
 
 @dataclass
@@ -50,6 +52,7 @@ def process_file(rel_path: str, raw: bytes) -> FileRecord:
         imports=facts.imports,
         types=facts.types,
         entities=facts.entities,
+        flows=facts.flows,
     )
 
 

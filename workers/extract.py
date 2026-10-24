@@ -1,6 +1,7 @@
 """Extracts per-file facts with tree-sitter, parsing each file once: its import
-statements (repograph-spec.md §6), its class/interface declarations (§11) and, among
-those classes, its ORM entities (§12, in entities.py).
+statements (repograph-spec.md §6), its class/interface declarations (§11), among
+those classes its ORM entities (§12, in entities.py), and the functions, bindings,
+exports and route declarations the APIs view uses (flows.py).
 
 Replaces the prototype's regex `parseFile`/`extractTypes`: the AST already separates
 comments and strings from code, so a commented-out import or class never counts and
@@ -17,6 +18,7 @@ import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser, Query, QueryCursor
 
 from entities import Entity, extract_entities
+from flows import FlowFacts, extract_flows
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class FileFacts:
     imports: Imports
     types: list[TypeDecl]
     entities: list[Entity] = field(default_factory=list)
+    flows: FlowFacts = field(default_factory=FlowFacts)
 
 
 JS_QUERY = """
@@ -282,11 +285,12 @@ def analyze_file(path: str, lang: str, content: str) -> FileFacts:
     root = g.parse(content.encode("utf-8"))
     classes = _in_order(g.captures(root, "types").get("t", []))
     entities = extract_entities(lang, classes)
+    flows = extract_flows(lang, path, root)
     if lang == "py":
-        return FileFacts(_python(g, root), _py_types(classes), entities)
+        return FileFacts(_python(g, root), _py_types(classes), entities, flows)
     if lang == "java":
-        return FileFacts(_java(g, root), _java_types(classes), entities)
-    return FileFacts(_js(g, root), _js_types(classes), entities)
+        return FileFacts(_java(g, root), _java_types(classes), entities, flows)
+    return FileFacts(_js(g, root), _js_types(classes), entities, flows)
 
 
 def extract_imports(path: str, lang: str, content: str) -> Imports:

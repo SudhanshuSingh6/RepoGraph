@@ -114,6 +114,17 @@ SAMPLE_ENTITIES = [
 ]
 
 
+def endpoint_rows(conn, pid):
+    rows = conn.execute(
+        "select f.path, e from parsed_flows fl join parsed_files f on f.id = fl.file_id, "
+        "jsonb_array_elements(fl.endpoints) e where fl.project_id = %s order by f.path", (pid,))
+    return [(r["path"], r["e"]["method"], r["e"]["path"], r["e"]["prefix"],
+             r["e"]["handler"]["label"]) for r in rows]
+
+
+SAMPLE_ENDPOINTS = [("backend/routes.py", "GET", "/api/customers", "resolved", "list_customers")]
+
+
 def expected_sample_paths():
     return sorted(p.relative_to(FIXTURE).as_posix() for p in FIXTURE.rglob("*")
                   if p.is_file() and p.suffix in {".ts", ".js", ".py", ".java"})
@@ -147,6 +158,7 @@ def test_upload_import_produces_inventory(conn, user_id):
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)
     assert type_rows(conn, pid) == SAMPLE_TYPES
     assert entity_rows(conn, pid) == SAMPLE_ENTITIES
+    assert endpoint_rows(conn, pid) == SAMPLE_ENDPOINTS
     # Cleanup: the archive is gone once the job ends.
     assert conn.execute("select count(*) n from project_uploads").fetchone()["n"] == 0
 
@@ -168,6 +180,10 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
         "select %s, id, 'Partial', 'class', 1 from parsed_files where project_id = %s",
         (pid, pid))
     crashed.execute(
+        "insert into parsed_flows (project_id, file_id, endpoints) "
+        "select %s, id, '[{\"method\": \"GET\"}]' from parsed_files where project_id = %s",
+        (pid, pid))
+    crashed.execute(
         "insert into parsed_edges (project_id, from_file_id, to_file_id) "
         "select %s, a.id, b.id from parsed_files a, parsed_files b "
         "where a.project_id = %s and b.project_id = %s and a.id <> b.id", (pid, pid, pid))
@@ -185,6 +201,11 @@ def test_restart_mid_parse_leaves_no_duplicates(conn, user_id, database_url):
     assert edge_paths(conn, pid) == sorted(SAMPLE_EDGES)  # and one per resolved import
     assert type_rows(conn, pid) == SAMPLE_TYPES  # and one per declaration
     assert entity_rows(conn, pid) == SAMPLE_ENTITIES  # and one per entity
+    assert endpoint_rows(conn, pid) == SAMPLE_ENDPOINTS  # and one flows row per file
+    assert conn.execute("select count(*)::int n from parsed_flows where project_id = %s",
+                        (pid,)).fetchone()["n"] == conn.execute(
+        "select count(distinct file_id)::int n from parsed_flows where project_id = %s",
+        (pid,)).fetchone()["n"]
 
 
 def test_deleting_a_project_removes_everything_parsed(conn, user_id):
@@ -192,7 +213,7 @@ def test_deleting_a_project_removes_everything_parsed(conn, user_id):
     pid = create_upload_project(conn, user_id, zip_dir(FIXTURE, "sample-project-main"))
     assert worker_loop.process_one(conn, SETTINGS)
     tables = ["parse_jobs", "project_uploads", "parsed_files", "parsed_edges", "parsed_types",
-              "parsed_entities"]
+              "parsed_entities", "parsed_flows"]
 
     def counts():
         return {t: conn.execute(f"select count(*)::int n from {t} where project_id = %s",
@@ -200,7 +221,7 @@ def test_deleting_a_project_removes_everything_parsed(conn, user_id):
 
     before = counts()
     assert before["parsed_files"] and before["parsed_edges"] and before["parsed_types"] \
-        and before["parsed_entities"] and before["parse_jobs"]
+        and before["parsed_entities"] and before["parse_jobs"] and before["parsed_flows"]
     conn.execute("delete from projects where id = %s and owner_id = %s", (pid, user_id))
     assert counts() == dict.fromkeys(tables, 0)
 

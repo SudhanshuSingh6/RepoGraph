@@ -1,7 +1,7 @@
 """Processes one claimed parse job: fetch source → build inventory (with each file's
 imports, type declarations and entities) → resolve imports to edges → store them all.
 
-All parsed rows for the job (files, edges, types, entities), plus the job's own `done` transition, are written in ONE
+All parsed rows for the job (files, edges, types, entities, flows), plus the job's own `done` transition, are written in ONE
 transaction that first deletes any rows from a previous attempt. A crash mid-parse
 therefore leaves nothing behind, and a retry starts from a clean slate. The final
 transition is conditioned on this attempt still owning the claim, so an attempt that
@@ -17,6 +17,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from file_storage import write_contents
+from flow_link import link_flows
 from inventory import build_inventory
 from resolve import link_files
 from source import Caps, ImportRejected, clone_github, extract_zip
@@ -104,6 +105,8 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
             raise ImportRejected(
                 "No Java, JavaScript, TypeScript or Python files were found in this project.")
 
+        flows = link_flows(inv.files, [f.types for f in inv.files])
+
         with conn.transaction():
             conn.execute("delete from parsed_files where project_id = %s", (job.project_id,))
             with conn.cursor() as cur:
@@ -136,6 +139,15 @@ def run_job(conn: psycopg.Connection, job: Job, settings: Settings) -> None:
                       Jsonb([asdict(x) for x in e.fields]),
                       Jsonb([asdict(x) for x in e.relations]), e.line)
                      for i, f in zip(ids, inv.files) for e in f.entities],
+                )
+                cur.executemany(
+                    "insert into parsed_flows "
+                    "(project_id, file_id, functions, members, bindings, exports, endpoints, "
+                    "package) values (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    [(job.project_id, i, Jsonb(fl["functions"]), Jsonb(fl["members"]),
+                      Jsonb(fl["bindings"]), Jsonb(fl["exports"]), Jsonb(fl["endpoints"]),
+                      fl["package"])
+                     for i, fl in zip(ids, flows) if fl],
                 )
             finish(conn, job, "done", None)
             conn.execute(

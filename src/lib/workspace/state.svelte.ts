@@ -11,6 +11,7 @@ import {
 	type Lang,
 	type TreeNode
 } from '#analysis/graph/index.ts';
+import type { Endpoint } from '#analysis/apis/index.ts';
 import { possiblyUnused } from '#analysis/hotspots/index.ts';
 import {
 	referencedTypes,
@@ -31,7 +32,7 @@ export type GraphPayload = {
 	defaultLevel: number | null;
 };
 
-export type View = 'tree' | 'treemap' | 'graph' | 'uml' | 'er' | 'hotspots';
+export type View = 'tree' | 'treemap' | 'graph' | 'uml' | 'er' | 'hotspots' | 'apis';
 
 /** `entity` indexes `Workspace.entities` (names aren't unique across ORMs). */
 export type Selection = { file: number } | { folder: string } | { entity: number } | null;
@@ -91,6 +92,12 @@ export class Workspace {
 	// ER Diagram (§12): entities, likewise loaded on first use.
 	entities = $state.raw<EntityDecl[] | null>(null);
 	entitiesError = $state<string | null>(null);
+	// APIs: detected endpoints, loaded on first use; `apisHasData` is false for a project
+	// imported before the APIs view existed (it needs a re-import).
+	apis = $state.raw<Endpoint[] | null>(null);
+	apisHasData = $state(true);
+	apisError = $state<string | null>(null);
+	apisGroup = $state<'path' | 'file'>('path');
 	#requested: Record<string, boolean> = {}; // not reactive: only gates the fetch
 
 	// `refresh()` in the prototype: re-derived whenever a filter changes.
@@ -153,6 +160,19 @@ export class Workspace {
 			'entities',
 			(body) => (this.entities = body.entities),
 			(message) => (this.entitiesError = message)
+		);
+	}
+
+	/** Fetches `/apis` once, the first time the APIs view opens. */
+	loadApis() {
+		this.#load<{ endpoints: Endpoint[]; hasFlowData: boolean }>(
+			'apis',
+			'APIs',
+			(body) => {
+				this.apis = body.endpoints;
+				this.apisHasData = body.hasFlowData;
+			},
+			(message) => (this.apisError = message)
 		);
 	}
 

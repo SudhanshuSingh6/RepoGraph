@@ -12,7 +12,8 @@
 		{ id: 'graph', label: 'Dependencies' },
 		{ id: 'uml', label: 'Architecture' },
 		{ id: 'er', label: 'ER Diagram' },
-		{ id: 'hotspots', label: 'Hotspots' }
+		{ id: 'hotspots', label: 'Hotspots' },
+		{ id: 'apis', label: 'APIs' }
 	];
 
 	const chips = $derived(langCounts(ws.graph.files, ws.hideTests));

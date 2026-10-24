@@ -9,6 +9,8 @@
 	import TreemapControls from '#lib/views/TreemapControls.svelte';
 	import Er from '#lib/views/Er.svelte';
 	import Hotspots from '#lib/views/Hotspots.svelte';
+	import Apis from '#lib/views/Apis.svelte';
+	import ApisControls from '#lib/views/ApisControls.svelte';
 	import ErControls from '#lib/views/ErControls.svelte';
 	import Uml from '#lib/views/Uml.svelte';
 	import UmlControls from '#lib/views/UmlControls.svelte';
@@ -116,6 +118,8 @@
 					<ErControls />
 				{:else if ws.view === 'hotspots'}
 					<span class="hint">Click a file to select it.</span>
+				{:else if ws.view === 'apis'}
+					<ApisControls {ws} />
 				{/if}
 			</div>
 			<div class="main">
@@ -133,6 +137,8 @@
 						<Er {ws} />
 					{:else if ws.view === 'hotspots'}
 						<Hotspots {ws} />
+					{:else if ws.view === 'apis'}
+						<Apis {ws} />
 					{/if}
 				</div>
 				<ChatPanel {ws} available={data.chat.available} signedIn={data.chat.signedIn} />
