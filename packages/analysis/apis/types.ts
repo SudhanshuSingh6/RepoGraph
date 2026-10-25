@@ -19,7 +19,9 @@ export type Endpoint = {
 	path: string; // `{x}` marks a piece that isn't a literal (a constant, a setting)
 	prefix: PrefixStatus;
 	regex: boolean; // a Django re_path()/url() pattern, shown as written
-	handler: { label: string; file: number | null; line: number | null };
+	handler: { label: string; file: number | null; fn: number | null; line: number | null };
+	steps: number; // functions its call flow reaches past the handler
+	partial: boolean; // the call flow hit a cap
 };
 
 /** One file's stored endpoints, as the worker wrote them (paths, not indexes). */

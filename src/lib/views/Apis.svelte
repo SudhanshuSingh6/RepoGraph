@@ -1,13 +1,16 @@
 <script lang="ts">
 	// APIs view (an addition to repograph-spec.md): the HTTP endpoints this repo declares,
-	// found by static analysis of route declarations. Later phases add each endpoint's
-	// call flow; this list is the entry point to them.
+	// found by static analysis of route declarations, each opening onto a control-flow
+	// chart of its handler.
 	import { groupEndpoints, matchesEndpoint, type Endpoint } from '#analysis/apis/index.ts';
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
+	import ApiFlowchart from './ApiFlowchart.svelte';
 
 	let { ws }: { ws: Workspace } = $props();
 
 	$effect(() => ws.loadApis());
+	// Leaving the tab closes a full-screen chart.
+	$effect(() => () => (ws.chartFullscreen = null));
 
 	const FRAMEWORKS: Record<Endpoint['framework'], string> = {
 		spring: 'Spring',
@@ -20,6 +23,8 @@
 	const PREFIX_UNKNOWN =
 		"This route is declared on a router, blueprint or URLconf that the analysis couldn't follow to the app, so the path is relative to it and the full URL may have a prefix.";
 	const REGEX = 'A Django regular-expression route, shown as written.';
+	const PARTIAL =
+		'Tracing its calls hit the 5-level or 40-function limit, so the step count is a lower bound.';
 
 	const fmt = (n: number) => n.toLocaleString();
 	const plural = (n: number, one: string, many: string) => `${fmt(n)} ${n === 1 ? one : many}`;
@@ -29,6 +34,22 @@
 		(ws.apis ?? []).filter((e) => ws.active[e.file] && matchesEndpoint(e, files, ws.search))
 	);
 	const groups = $derived(groupEndpoints(visible, ws.apisGroup, files));
+	// Endpoint objects → their index in `ws.apis`, which the chart route is keyed by.
+	const indexOf = $derived(new Map((ws.apis ?? []).map((e, i) => [e, i])));
+
+	function toggle(n: number) {
+		if (ws.apisOpen.has(n)) {
+			ws.apisOpen.delete(n);
+			if (ws.chartFullscreen === n) ws.chartFullscreen = null;
+		} else {
+			ws.apisOpen.add(n);
+			ws.loadChart(n);
+		}
+	}
+
+	$effect(() => {
+		for (const n of ws.apisOpen) ws.loadChart(n); // rows opened by "Expand all"
+	});
 	const unknownPrefix = $derived(visible.filter((e) => e.prefix === 'unknown').length);
 	const fileCount = $derived(new Set(visible.map((e) => e.file)).size);
 
@@ -86,7 +107,21 @@
 					</h3>
 					<ul class="list">
 						{#each g.endpoints as e (`${e.file}:${e.line}:${e.method}:${e.path}`)}
-							<li class="row" class:sel={ws.isSelectedFile(e.file)}>
+							{@const n = indexOf.get(e)!}
+							{@const open = ws.apisOpen.has(n)}
+							{@const chart = ws.apiCharts[n]}
+							{@const rootChart =
+								chart && chart !== 'loading' && 'root' in chart && chart.root
+									? ws.fnCharts.get(chart.root)
+									: undefined}
+							<li class="row" class:sel={ws.isSelectedFile(e.file)} class:open>
+								<button
+									type="button"
+									class="chev"
+									aria-expanded={open}
+									aria-label="{open ? 'Hide' : 'Show'} the flowchart of {e.method} {e.path}"
+									onclick={() => toggle(n)}>{open ? '▾' : '▸'}</button
+								>
 								<span class="method {methodClass(e.method)}">{e.method}</span>
 								<span class="route">
 									<span class="path" title={e.path}>{e.path}</span>
@@ -95,6 +130,12 @@
 									{/if}
 									{#if e.regex}
 										<span class="flag" title={REGEX}>regex</span>
+									{/if}
+									{#if e.handler.fn !== null}
+										<span class="steps">{plural(e.steps, 'step', 'steps')}</span>
+									{/if}
+									{#if e.partial}
+										<span class="flag partial" title={PARTIAL}>partial</span>
 									{/if}
 								</span>
 								<span class="where">
@@ -123,6 +164,24 @@
 								</span>
 								<span class="fw">{FRAMEWORKS[e.framework]}</span>
 							</li>
+							{#if open}
+								<li class="drop">
+									{#if chart === undefined || chart === 'loading'}
+										<p class="empty">Reading the handler…</p>
+									{:else if 'error' in chart}
+										<p class="empty">{chart.error}</p>
+									{:else if chart.root === null}
+										<p class="empty">
+											The handler's definition wasn't found in the repo, so there's no chart to
+											show.
+										</p>
+									{:else if rootChart && rootChart !== 'loading' && !('error' in rootChart)}
+										<ApiFlowchart {ws} {n} root={rootChart} />
+									{:else}
+										<p class="empty">Reading the handler…</p>
+									{/if}
+								</li>
+							{/if}
 						{/each}
 					</ul>
 				</div>
@@ -195,7 +254,7 @@
 
 	.row {
 		display: grid;
-		grid-template-columns: 64px minmax(0, 1fr) minmax(0, auto) auto;
+		grid-template-columns: 18px 64px minmax(0, 1fr) minmax(0, auto) auto;
 		align-items: center;
 		gap: 10px;
 		padding: 5px 6px;
@@ -209,6 +268,40 @@
 	.row.sel {
 		background: var(--panel2);
 		box-shadow: inset 3px 0 0 var(--accent);
+	}
+
+	.chev {
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		font-size: 11px;
+		line-height: 1;
+		color: var(--muted);
+		background: none;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	.chev:hover,
+	.chev:focus-visible {
+		color: var(--ink);
+		background: var(--panel);
+	}
+
+	.steps {
+		flex: none;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.flag.partial {
+		color: var(--blast);
+		border-color: color-mix(in srgb, var(--blast) 55%, transparent);
+	}
+
+	.drop {
+		list-style: none;
 	}
 
 	.method {
@@ -317,11 +410,11 @@
 
 	@media (max-width: 900px) {
 		.row {
-			grid-template-columns: 60px minmax(0, 1fr);
+			grid-template-columns: 18px 60px minmax(0, 1fr);
 		}
 
 		.where {
-			grid-column: 2;
+			grid-column: 3;
 			align-items: flex-start;
 		}
 

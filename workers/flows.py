@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 
 from tree_sitter import Node
 
+from calls import collect_calls
+
 
 @dataclass
 class Param:
@@ -30,6 +32,12 @@ class Function:
     scope: str | None = None  # enclosing function, for nested defs
     synthetic: bool = False  # an anonymous route handler, named after its route
     action: dict | None = None  # DRF @action(detail=, methods=, url_path=)
+    abstract: bool = False  # no body: an interface or abstract method
+    calls: list = field(default_factory=list)  # calls.Call, resolved in flow_link.py
+    locals: list = field(default_factory=list)  # calls.Local: typed local variables
+    body: list = field(default_factory=list)  # structure.py: the statement tree
+    is_async: bool = False  # JS/TS/Python `async`
+    spring_async: bool = False  # Java method annotated @Async
 
 
 @dataclass
@@ -275,12 +283,14 @@ class _Js:
         self.imports_nest = False
         self.param_routers: set[str] = set()
         self.default_expr: Node | None = None
+        self.fn_nodes: list[Node] = []  # parallel to self.f.functions
 
     def run(self) -> FlowFacts:
         self._imports_and_exports()
         self._functions(self.root, None, None)
         self._routers()
         self._routes()
+        collect_calls("js", self.f.functions, self.fn_nodes)
         return self.f
 
     # imports / exports
@@ -473,6 +483,14 @@ class _Js:
                 if body is not None:
                     self._class_body(_text(name) if name is not None else None, body)
                 continue
+            if t == "interface_declaration":  # TS: its methods are abstract
+                name = c.child_by_field_name("name")
+                body = c.child_by_field_name("body")
+                for m in (body.named_children if body is not None else []):
+                    if m.type == "method_signature" and name is not None:
+                        self._add_fn(_text(m.child_by_field_name("name")), _text(name), m, None,
+                                     abstract=True)
+                continue
             if t in ("function_declaration", "generator_function_declaration"):
                 name = c.child_by_field_name("name")
                 self._add_fn(_text(name), owner, c, scope)
@@ -516,16 +534,20 @@ class _Js:
             self._functions(c, owner, scope)
 
     def _add_fn(self, name: str, owner: str | None, node: Node, scope: str | None,
-                static: bool = False) -> int:
+                static: bool = False, abstract: bool = False) -> int:
         self.f.functions.append(Function(name, owner, _line(node), _end_line(node),
                                          _js_params(node.child_by_field_name("parameters")),
-                                         static, scope))
+                                         static, scope, abstract=abstract))
+        self.fn_nodes.append(node)
         return len(self.f.functions) - 1
 
     def _class_body(self, cls: str | None, body: Node) -> None:
         if cls is None:
             return
         for m in body.named_children:
+            if m.type == "abstract_method_signature":
+                self._add_fn(_text(m.child_by_field_name("name")), cls, m, None, abstract=True)
+                continue
             if m.type == "method_definition":
                 name = _text(m.child_by_field_name("name"))
                 static = any(c.type == "static" for c in m.children)
@@ -711,6 +733,7 @@ class _Js:
                                              _end_line(handler),
                                              _js_params(handler.child_by_field_name("parameters")),
                                              synthetic=True))
+            self.fn_nodes.append(handler)
             route.handler_fn = len(self.f.functions) - 1
             route.handler_label = "inline handler"
         elif handler is not None:
@@ -889,6 +912,7 @@ class _Py:
         self.f = FlowFacts()
         self.modules: set[str] = set()  # top-level modules imported (flask, fastapi, …)
         self.fn_at: dict[int, int] = {}  # function node start byte → index
+        self.fn_nodes: list[Node] = []  # parallel to self.f.functions
 
     def run(self) -> FlowFacts:
         self._imports()
@@ -897,6 +921,7 @@ class _Py:
         self._routers()
         self._routes()
         self._django()
+        collect_calls("py", self.f.functions, self.fn_nodes)
         return self.f
 
     def _imports(self) -> None:
@@ -983,6 +1008,7 @@ class _Py:
                     _py_params(target.child_by_field_name("parameters")), static, scope,
                     action=self._drf_action(c) if c.type == "decorated_definition" else None))
                 self.fn_at[target.start_byte] = len(self.f.functions) - 1
+                self.fn_nodes.append(target)
                 body = target.child_by_field_name("body")
                 if body is not None:
                     # Nested defs belong to no class; `scope` records the enclosing def.
@@ -1315,6 +1341,7 @@ class _Java:
     def __init__(self, root: Node):
         self.root = root
         self.f = FlowFacts()
+        self.fn_nodes: list[Node] = []  # parallel to self.f.functions
 
     def run(self) -> FlowFacts:
         for node in self.root.named_children:
@@ -1328,6 +1355,7 @@ class _Java:
                 self.f.exports.append(Export(_text(node.child_by_field_name("name")),
                                              _text(node.child_by_field_name("name"))))
                 self._type(node, None)
+        collect_calls("java", self.f.functions, self.fn_nodes)
         return self.f
 
     def _import(self, node: Node) -> None:
@@ -1385,8 +1413,10 @@ class _Java:
                 mods = _first(m, "modifiers")
                 static = mods is not None and any(c.type == "static" for c in mods.children)
                 name = _text(m.child_by_field_name("name"))
+                abstract = m.child_by_field_name("body") is None
                 self.f.functions.append(Function(name, cls, _line(m), _end_line(m), params,
-                                                 static))
+                                                 static, abstract=abstract))
+                self.fn_nodes.append(m)
                 idx = len(self.f.functions) - 1
                 if m.type == "constructor_declaration":
                     continue

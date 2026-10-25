@@ -125,6 +125,28 @@ def endpoint_rows(conn, pid):
 SAMPLE_ENDPOINTS = [("backend/routes.py", "GET", "/api/customers", "resolved", "list_customers")]
 
 
+def resolved_calls(conn, pid):
+    """(caller path, function, callee name, target path) for every call stored with a
+    resolved target."""
+    rows = conn.execute(
+        "select f.path, fn->>'name' as name, c->>'name' as callee, c->'target'->>'path' as target "
+        "from parsed_flows fl join parsed_files f on f.id = fl.file_id, "
+        "jsonb_array_elements(fl.functions) fn, jsonb_array_elements(fn->'calls') c "
+        "where fl.project_id = %s and c ? 'target' order by 1, 2, 3", (pid,))
+    return [(r["path"], r["name"], r["callee"], r["target"]) for r in rows]
+
+
+SAMPLE_CALLS = [
+    ("backend/app.py", "create_app", "register", "backend/routes.py"),
+    ("backend/tests/test_routes.py", "test_list_customers_route_exists", "create_app",
+     "backend/app.py"),
+    ("jobs/src/main/java/com/example/jobs/reports/ReportJob.java", "execute", "getId",
+     "jobs/src/main/java/com/example/jobs/model/Order.java"),
+    ("web/src/state/store.ts", "createStore", "render", "web/src/ui/render.ts"),
+    ("web/src/ui/render.ts", "render", "formatName", "web/src/ui/format.js"),
+]
+
+
 def expected_sample_paths():
     return sorted(p.relative_to(FIXTURE).as_posix() for p in FIXTURE.rglob("*")
                   if p.is_file() and p.suffix in {".ts", ".js", ".py", ".java"})
@@ -159,6 +181,7 @@ def test_upload_import_produces_inventory(conn, user_id):
     assert type_rows(conn, pid) == SAMPLE_TYPES
     assert entity_rows(conn, pid) == SAMPLE_ENTITIES
     assert endpoint_rows(conn, pid) == SAMPLE_ENDPOINTS
+    assert resolved_calls(conn, pid) == SAMPLE_CALLS
     # Cleanup: the archive is gone once the job ends.
     assert conn.execute("select count(*) n from project_uploads").fetchone()["n"] == 0
 

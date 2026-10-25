@@ -1,4 +1,4 @@
-import { SvelteSet } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import {
 	UNGROUPED,
 	buildTree,
@@ -12,6 +12,8 @@ import {
 	type TreeNode
 } from '#analysis/graph/index.ts';
 import type { Endpoint } from '#analysis/apis/index.ts';
+import { refKey, type FnChart } from '#analysis/apis/flowchart.ts';
+import type { FnRef } from '#analysis/apis/trace.ts';
 import { possiblyUnused } from '#analysis/hotspots/index.ts';
 import {
 	referencedTypes,
@@ -20,6 +22,7 @@ import {
 	type EntityEdge,
 	type TypeDecl
 } from '#analysis/types/index.ts';
+import { readChatOpen, writeChatOpen } from './chatPref.ts';
 import { activeMask, type LangOn } from './filters.ts';
 import { LANG_NAMES } from './langs.ts';
 
@@ -67,6 +70,8 @@ export class Workspace {
 	tip = $state<Tip | null>(null);
 	/** The chat conversation (§17): kept while the project is open, not saved. */
 	chat = $state<ChatMessage[]>([]);
+	/** Whether the chat panel is showing; remembered in this browser (chatPref.ts). */
+	chatOpen = $state(readChatOpen());
 
 	// Tree: expanded folder paths; the root starts open, showing the top level.
 	treeExpanded = new SvelteSet<string>(['']);
@@ -98,6 +103,19 @@ export class Workspace {
 	apisHasData = $state(true);
 	apisError = $state<string | null>(null);
 	apisGroup = $state<'path' | 'file'>('path');
+	// Endpoint rows whose chart dropdown is open (indexes into `apis`), and each one's
+	// root function (null when the handler wasn't found in the repo).
+	apisOpen = new SvelteSet<number>();
+	apiCharts = $state<Record<number, { root: string | null } | { error: string } | 'loading'>>({});
+	// Every function chart fetched so far, by `path#fn`, shared by all open rows.
+	fnCharts = new SvelteMap<string, FnChart | { error: string } | 'loading'>();
+	// Inline call frames opened or closed by hand (overriding the default), the
+	// implementation shown for a call with several, and grouped statements listed in full.
+	chartOpen = new SvelteMap<string, boolean>();
+	chartChoice = new SvelteMap<string, number>();
+	chartGroups = new SvelteSet<string>();
+	/** The endpoint whose chart is open full screen (an index into `apis`), if any. */
+	chartFullscreen = $state<number | null>(null);
 	#requested: Record<string, boolean> = {}; // not reactive: only gates the fetch
 
 	// `refresh()` in the prototype: re-derived whenever a filter changes.
@@ -176,6 +194,39 @@ export class Workspace {
 		);
 	}
 
+	/** Fetches endpoint n's chart (its handler and direct callees) once, when its row
+	 * first opens; a failure retries on the next open. */
+	loadChart(n: number) {
+		const current = this.apiCharts[n];
+		const failed = typeof current === 'object' && current !== null && 'error' in current;
+		if (current !== undefined && !failed) return;
+		this.apiCharts[n] = 'loading';
+		fetch(`/api/projects/${this.id}/apis/${n}/chart`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`The chart couldn't be loaded (${res.status}).`);
+				const body = (await res.json()) as { root: FnChart | null; callees: FnChart[] };
+				for (const c of [...(body.root ? [body.root] : []), ...body.callees])
+					this.fnCharts.set(refKey(c.ref), c);
+				this.apiCharts[n] = { root: body.root ? refKey(body.root.ref) : null };
+			})
+			.catch((e: Error) => (this.apiCharts[n] = { error: e.message }));
+	}
+
+	/** Fetches one function's chart, when a deeper call is opened. */
+	loadFn(ref: FnRef) {
+		const key = refKey(ref);
+		const current = this.fnCharts.get(key);
+		if (current !== undefined && !(typeof current === 'object' && 'error' in current)) return;
+		this.fnCharts.set(key, 'loading');
+		const q = `path=${encodeURIComponent(ref.path)}&fn=${ref.fn}`;
+		fetch(`/api/projects/${this.id}/apis/chart?${q}`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`Couldn't load this function (${res.status}).`);
+				this.fnCharts.set(key, ((await res.json()) as { chart: FnChart }).chart);
+			})
+			.catch((e: Error) => this.fnCharts.set(key, { error: e.message }));
+	}
+
 	#load<T>(path: string, what: string, done: (body: T) => void, fail: (msg: string) => void) {
 		if (this.#requested[path]) return;
 		this.#requested[path] = true;
@@ -193,6 +244,11 @@ export class Workspace {
 	isSelectedEntity(i: number): boolean {
 		const sel = this.selection;
 		return sel !== null && 'entity' in sel && sel.entity === i;
+	}
+
+	toggleChat() {
+		this.chatOpen = !this.chatOpen;
+		writeChatOpen(this.chatOpen);
 	}
 
 	toggleLang(lang: Lang) {

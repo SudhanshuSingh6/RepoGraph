@@ -32,8 +32,11 @@ export function toEndpoints(
 				handler: {
 					label: e.handler.label,
 					file: handlerFile,
+					fn: handlerFile === null ? null : e.handler.fn,
 					line: handlerFile === null ? null : e.handler.line
-				}
+				},
+				steps: 0,
+				partial: false
 			});
 		}
 	}

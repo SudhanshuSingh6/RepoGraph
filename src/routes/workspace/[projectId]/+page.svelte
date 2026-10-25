@@ -122,7 +122,7 @@
 					<ApisControls {ws} />
 				{/if}
 			</div>
-			<div class="main">
+			<div class="main" class:chat-closed={!ws.chatOpen}>
 				<SidePanel {ws} />
 				<div class="stage" role="tabpanel" aria-label="Active view">
 					{#if ws.view === 'tree'}
@@ -141,7 +141,12 @@
 						<Apis {ws} />
 					{/if}
 				</div>
-				<ChatPanel {ws} available={data.chat.available} signedIn={data.chat.signedIn} />
+				<ChatPanel
+					{ws}
+					available={data.chat.available}
+					signedIn={data.chat.signedIn}
+					hidden={!ws.chatOpen}
+				/>
 			</div>
 		</section>
 		<Tip tip={ws.tip} />
@@ -267,6 +272,10 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: 300px 1fr 380px;
+	}
+
+	.main.chat-closed {
+		grid-template-columns: 300px 1fr;
 	}
 
 	.stage {

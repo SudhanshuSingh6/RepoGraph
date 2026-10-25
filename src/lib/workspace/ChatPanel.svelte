@@ -13,8 +13,12 @@
 	import { chatBlocks } from './chatText.ts';
 	import type { Workspace } from './state.svelte.ts';
 
-	let { ws, available, signedIn }: { ws: Workspace; available: boolean; signedIn: boolean } =
-		$props();
+	let {
+		ws,
+		available,
+		signedIn,
+		hidden = false
+	}: { ws: Workspace; available: boolean; signedIn: boolean; hidden?: boolean } = $props();
 
 	// repograph-spec.md §17, verbatim.
 	const STARTERS = [
@@ -124,7 +128,7 @@
 	}
 </script>
 
-<div class="chat-panel">
+<div class="chat-panel" id="chat-panel" {hidden}>
 	<div class="head">
 		<h2>Ask the codebase</h2>
 		{#if available && signedIn && keys !== null}
@@ -255,6 +259,12 @@
 </div>
 
 <style>
+	/* Closed from the toolbar: stays mounted (a reply in flight, a draft and the key
+	   settings survive), just out of the layout. */
+	.chat-panel[hidden] {
+		display: none;
+	}
+
 	.chat-panel {
 		display: flex;
 		flex-direction: column;

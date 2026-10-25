@@ -35,7 +35,7 @@
 		bind:clientHeight={h}
 	>
 		<div class="title">{tip.title}</div>
-		{#each tip.rows as [k, v] (k)}
+		{#each tip.rows as [k, v], i (i)}
 			<div class="row"><span>{k}</span><b>{v}</b></div>
 		{/each}
 	</div>

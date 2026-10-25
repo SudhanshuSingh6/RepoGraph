@@ -65,6 +65,24 @@
 		aria-label="Search file paths"
 		bind:value={ws.search}
 	/>
+
+	<button
+		type="button"
+		class="chip chat"
+		style:--c="var(--ink)"
+		aria-pressed={ws.chatOpen}
+		aria-controls="chat-panel"
+		title={ws.chatOpen ? 'Hide chat' : 'Show chat'}
+		onclick={() => ws.toggleChat()}
+	>
+		<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+			<path
+				fill="currentColor"
+				d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3.2 2.6a.5.5 0 0 1-.8-.4V11h0A1.5 1.5 0 0 1 2 9.5z"
+			/>
+		</svg>
+		Chat
+	</button>
 </div>
 
 <style>
@@ -134,6 +152,20 @@
 		color: var(--ink);
 		background: transparent;
 		opacity: 0.5;
+	}
+
+	/* The chat panel toggle: filled while the panel is open, outlined (not dimmed) when
+	   closed, so it stays easy to find. */
+	.chip.chat {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: var(--panel);
+	}
+
+	.chip.chat[aria-pressed='false'] {
+		color: var(--ink);
+		opacity: 1;
 	}
 
 	/* "Hide tests" reads the other way round: pressed means tests are filtered out. */

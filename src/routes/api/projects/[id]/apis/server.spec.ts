@@ -4,9 +4,10 @@ import { isHttpError } from '@sveltejs/kit';
 const getProject = vi.fn();
 const getProjectGraph = vi.fn();
 const getProjectEndpoints = vi.fn();
+const getProjectFunctions = vi.fn();
 vi.mock('#lib/server/db/projects.ts', () => ({ getProject }));
 vi.mock('#lib/server/db/graph.ts', () => ({ getProjectGraph }));
-vi.mock('#lib/server/db/flows.ts', () => ({ getProjectEndpoints }));
+vi.mock('#lib/server/db/flows.ts', () => ({ getProjectEndpoints, getProjectFunctions }));
 
 const { GET } = await import('./+server');
 const { clearGraphCache } = await import('#lib/server/graphCache.ts');
@@ -34,6 +35,41 @@ beforeEach(() => {
 	clearGraphCache();
 	getProject.mockResolvedValue(ready);
 	getProjectGraph.mockResolvedValue({ files: FILES, edges: [] });
+	getProjectFunctions.mockResolvedValue([
+		{
+			path: 'views.py',
+			functions: [
+				{
+					name: 'x',
+					owner: null,
+					line: 5,
+					end_line: 6,
+					synthetic: false,
+					abstract: false,
+					calls: [
+						{
+							receiver: null,
+							name: 'y',
+							line: 6,
+							guarded: false,
+							args: 0,
+							new: false,
+							target: { path: 'views.py', fn: 1 }
+						}
+					]
+				},
+				{
+					name: 'y',
+					owner: null,
+					line: 8,
+					end_line: 9,
+					synthetic: false,
+					abstract: false,
+					calls: []
+				}
+			]
+		}
+	]);
 	getProjectEndpoints.mockResolvedValue({
 		rows: [
 			{
@@ -69,7 +105,9 @@ describe('GET /api/projects/:id/apis', () => {
 					path: '/x',
 					prefix: 'root',
 					regex: false,
-					handler: { label: 'x', file: 1, line: 5 }
+					handler: { label: 'x', file: 1, fn: 0, line: 5 },
+					steps: 1,
+					partial: false
 				}
 			],
 			hasFlowData: true
@@ -78,6 +116,7 @@ describe('GET /api/projects/:id/apis', () => {
 
 	it('says when the project predates flow data', async () => {
 		getProjectEndpoints.mockResolvedValue({ rows: [], hasFlowData: false });
+		getProjectFunctions.mockResolvedValue([]);
 		expect(await ((await call()) as Response).json()).toEqual({
 			endpoints: [],
 			hasFlowData: false
@@ -98,5 +137,6 @@ describe('GET /api/projects/:id/apis', () => {
 		expect(((await call(null)) as Response).status).toBe(200);
 		await call(null);
 		expect(getProjectEndpoints).toHaveBeenCalledTimes(1);
+		expect(getProjectFunctions).toHaveBeenCalledTimes(1);
 	});
 });

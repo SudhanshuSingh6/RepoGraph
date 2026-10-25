@@ -56,8 +56,8 @@ describe('toEndpoints', () => {
 			'GET /api/users/:id',
 			'DELETE /api/users/:id'
 		]);
-		expect(out[1].handler).toEqual({ label: 'Svc.make', file: 2, line: 9 });
-		expect(out[0].handler).toEqual({ label: 'gone', file: null, line: null });
+		expect(out[1].handler).toEqual({ label: 'Svc.make', file: 2, fn: 0, line: 9 });
+		expect(out[0].handler).toEqual({ label: 'gone', file: null, fn: null, line: null });
 		expect(out[0].regex).toBe(true);
 		expect(out[2].regex).toBe(false);
 	});

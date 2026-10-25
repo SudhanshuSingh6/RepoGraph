@@ -1,4 +1,4 @@
-import type { StoredEndpoint } from '#analysis/apis/index.ts';
+import type { StoredEndpoint, StoredFunction } from '#analysis/apis/index.ts';
 import { db } from './client';
 
 /**
@@ -20,4 +20,15 @@ export async function getProjectEndpoints(
 		rows: rows.map((r) => ({ path: r.path, endpoints: r.endpoints })),
 		hasFlowData: any
 	};
+}
+
+/** Every stored function (with its resolved calls), per file, for tracing call flows. */
+export async function getProjectFunctions(
+	projectId: string
+): Promise<{ path: string; functions: StoredFunction[] }[]> {
+	const rows = await db()`
+		select f.path, fl.functions from parsed_flows fl join parsed_files f on f.id = fl.file_id
+		where fl.project_id = ${projectId} and jsonb_array_length(fl.functions) > 0
+	`;
+	return rows.map((r) => ({ path: r.path, functions: r.functions }));
 }
