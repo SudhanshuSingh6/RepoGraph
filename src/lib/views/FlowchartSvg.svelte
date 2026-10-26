@@ -1,6 +1,7 @@
 <script lang="ts">
 	// The drawing of one control-flow chart scene, as SVG content: the dropdown and the
 	// full-screen view (FlowchartFullscreen.svelte) both render it inside their own <svg>.
+	import { EXECUTES_WORDS, OP_WORDS, opLabel, type CallQuery } from '#analysis/apis/queries.ts';
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
 	import {
 		LINE,
@@ -28,6 +29,31 @@
 	} = $props();
 
 	const path = (file: number) => ws.graph.files[file]?.path ?? '';
+	const fileOf = (p: string) => ws.graph.files.findIndex((f) => f.path === p);
+
+	function queryTip(event: PointerEvent, q: CallQuery, file: number) {
+		event.stopPropagation();
+		const rows: [string, string][] = [['Op', OP_WORDS[q.op] ? `${q.op}: ${OP_WORDS[q.op]}` : q.op]];
+		if (q.target) rows.push(['Target', q.entity ? `${q.target} (${q.entity.path})` : q.target]);
+		rows.push([
+			'Runs',
+			EXECUTES_WORDS[q.executes] + (q.executesNote ? ` (${q.executesNote})` : '')
+		]);
+		if (q.guarded) rows.push(['Only', 'on a path that may not run (a branch, loop, callback…)']);
+		if (q.oneOf) rows.push(['Which', `one of ${q.oneOf} implementations the call may reach`]);
+		if (q.viaRepository) rows.push(['From', `${q.viaRepository} (repository method)`]);
+		if (q.predicate === 'unknown')
+			rows.push(['Condition', 'not parsed: the method name uses a keyword outside the grammar']);
+		if (q.truncated)
+			rows.push(['Shortened', `showing ${q.text.length - 1} of ${q.textLength} chars`]);
+		rows.push(['Source', `${path(file)}:${q.line}`]);
+		ws.showTip(event, q.text, rows);
+	}
+
+	function selectEntity(q: CallQuery) {
+		const i = q.entity ? fileOf(q.entity.path) : -1;
+		if (i >= 0) ws.selection = { file: i };
+	}
 	const MODE_MARK = {
 		awaited: '⏳',
 		deferred: '⇢',
@@ -254,6 +280,40 @@
 							>{t}</text
 						>
 					{/each}
+					{#each c.queries as cq, k (k)}
+						{@const qy = s.y + cq.dy + 13}
+						<g
+							class="dbq op-{cq.q.op.toLowerCase()}"
+							class:maybe={cq.q.executes === 'unknown'}
+							onpointermove={(e) => queryTip(e, cq.q, s.file)}
+							role="presentation"
+						>
+							<rect class="badge" x={s.x + 24} y={qy - 11} width={cq.badgeW} height="15" rx="3" />
+							<text class="btext" x={s.x + 24 + cq.badgeW / 2} y={qy} text-anchor="middle"
+								>{opLabel(cq.q.op)}</text
+							>
+							{#each cq.lines as t, j (j)}
+								{#if cq.q.entity}
+									<text
+										class="qtext linked"
+										x={s.x + 30 + cq.badgeW}
+										y={qy + j * LINE}
+										role="button"
+										tabindex="0"
+										onclick={() => selectEntity(cq.q)}
+										onkeydown={(e) => e.key === 'Enter' && selectEntity(cq.q)}>{t}</text
+									>
+								{:else}
+									<text class="qtext" x={s.x + 30 + cq.badgeW} y={qy + j * LINE}>{t}</text>
+								{/if}
+							{/each}
+							{#each cq.flagLines as t, j (j)}
+								<text class="qflag" x={s.x + 24} y={qy + cq.lines.length * LINE + j * NOTE_LINE - 2}
+									>{t}</text
+								>
+							{/each}
+						</g>
+					{/each}
 					{#if c.targets.length > 1}
 						<text
 							class="impl"
@@ -406,6 +466,71 @@
 	.fc g.cur > rect,
 	.fc g.cur > polygon {
 		stroke-width: 3.5;
+	}
+
+	.dbq {
+		--q: var(--muted);
+	}
+
+	.dbq.op-select {
+		--q: var(--lang-ts);
+	}
+
+	.dbq.op-insert {
+		--q: var(--lang-py);
+	}
+
+	.dbq.op-update {
+		--q: var(--lang-java);
+	}
+
+	.dbq.op-delete {
+		--q: var(--accent);
+	}
+
+	.dbq.op-upsert {
+		--q: var(--blast);
+	}
+
+	.dbq.op-save {
+		--q: var(--lang-js);
+	}
+
+	.dbq .badge {
+		fill: color-mix(in srgb, var(--q) 16%, transparent);
+		stroke: var(--q);
+	}
+
+	.dbq.op-save .badge,
+	.dbq.op-unknown .badge {
+		stroke-dasharray: 3 2;
+	}
+
+	.dbq.maybe .badge {
+		fill: none;
+	}
+
+	.btext {
+		fill: var(--q);
+		font-size: 10px;
+		font-weight: 700;
+		font-family: var(--font-mono);
+	}
+
+	.qtext {
+		fill: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 11px;
+	}
+
+	.qtext.linked {
+		cursor: pointer;
+		text-decoration: underline dotted;
+	}
+
+	.qflag {
+		fill: var(--muted);
+		font-size: 10.5px;
 	}
 
 	.dead {

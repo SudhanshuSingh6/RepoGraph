@@ -21,6 +21,7 @@ from dataclasses import asdict
 from typing import Protocol
 
 from call_resolve import CallResolver
+from query_link import QueryLinker
 from flows import FlowFacts, Mount, RouteDecl, UrlPattern, join_path
 from resolve import JS_ALIAS_PREFIXES, _JavaResolver, _JsResolver
 
@@ -552,11 +553,12 @@ def link_flows(files: Sequence[FlowFile], types_by_file: Sequence[list]) -> list
     linker = Linker(files, types_by_file)
     endpoints = linker.endpoints()
     calls = CallResolver(linker)
+    queries = QueryLinker(linker, calls)
     out = []
     for i, f in enumerate(files):
         fl = f.flows
         row = {
-            "functions": [_function(calls, i, fn) for fn in fl.functions],
+            "functions": [_function(calls, queries, i, fn) for fn in fl.functions],
             "members": [asdict(m) for m in fl.members],
             "bindings": linker.bindings[i],
             "exports": [_export(linker, i, e) for e in fl.exports],
@@ -568,11 +570,14 @@ def link_flows(files: Sequence[FlowFile], types_by_file: Sequence[list]) -> list
     return out
 
 
-def _function(calls: "CallResolver", i: int, fn) -> dict:
+def _function(calls: "CallResolver", queries: QueryLinker, i: int, fn) -> dict:
     d = asdict(fn)
     d.pop("locals")  # only needed to resolve calls, here
     d["calls"] = calls.resolve_function_calls(i, fn)
     calls.annotate_throws(i, d["body"])
+    queries.apply(i, fn, d)
+    if d.get("query") is None:
+        d.pop("query", None)
     return d
 
 

@@ -16,6 +16,7 @@ import {
 	startTransform,
 	viewportRect,
 	wrap,
+	type BoxShape,
 	type LayoutInput,
 	type Rect,
 	type Scene
@@ -36,6 +37,7 @@ const call = (label: string, over: Partial<ChartCall> = {}): ChartCall => ({
 	targets: [],
 	implementations: null,
 	reason: 'library',
+	queries: [],
 	...over
 });
 
@@ -592,5 +594,52 @@ describe('closedWords', () => {
 		expect(closedWords({ opened: 1, byHand: 1, unresolved: 0, depth: 0, recursive: 0 })).toBe(
 			'Opened 1 call · 1 closed by hand'
 		);
+	});
+});
+
+describe('query rows', () => {
+	const dbq = (op: 'SELECT' | 'SAVE', guarded = false) => ({
+		kind: 'orm' as const,
+		orm: 'jpa',
+		op,
+		target: 'Owner',
+		text: 'owners.findByLastNameStartingWith(lastName, pageable)',
+		textLength: 52,
+		truncated: false,
+		executes: 'yes' as const,
+		detail: 'lastName LIKE ?% (paged)',
+		line: 1,
+		guarded,
+		when: null,
+		context: null,
+		viaRepository: 'OwnerRepository.findByLastNameStartingWith',
+		oneOf: null
+	});
+	const box = (queries: ReturnType<typeof dbq>[]) =>
+		layoutChart(
+			chart(
+				[s('x = repo.find()', [0]), s('after()', [1])],
+				[call('repo.find', { queries }), call('after')]
+			),
+			input()
+		);
+
+	it('sits under the call, grows the box and keeps everything apart', () => {
+		const plain = box([]);
+		const scene = box([dbq('SELECT'), dbq('SAVE', true)]);
+		expectNoOverlap(scene);
+		const b = scene.shapes.find((x) => x.type === 'box' && x.calls.length) as BoxShape;
+		const p = plain.shapes.find((x) => x.type === 'box' && x.calls.length) as BoxShape;
+		expect(b.h).toBeGreaterThan(p.h);
+		const [first, second] = b.calls[0].queries;
+		expect(first.dy).toBeGreaterThan(b.calls[0].dy);
+		expect(second.dy).toBeGreaterThan(first.dy);
+		expect(first.lines.join(' ')).toContain('Owner · lastName LIKE ?% (paged)');
+		expect(second.flagLines.join(' ')).toContain('conditional');
+		expect(second.dy + 15 * second.flagLines.length).toBeLessThan(b.h);
+	});
+
+	it('is found by Find in chart', () => {
+		expect(findMatches(box([dbq('SELECT')]), 'LIKE ?%').length).toBe(1);
 	});
 });

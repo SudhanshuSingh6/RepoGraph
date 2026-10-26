@@ -107,7 +107,8 @@ describe('GET /api/projects/:id/apis', () => {
 					regex: false,
 					handler: { label: 'x', file: 1, fn: 0, line: 5 },
 					steps: 1,
-					partial: false
+					partial: false,
+					queries: 0
 				}
 			],
 			hasFlowData: true

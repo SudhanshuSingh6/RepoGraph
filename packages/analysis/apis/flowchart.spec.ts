@@ -99,6 +99,7 @@ describe('callMode', () => {
 		targets: [],
 		implementations: null,
 		reason: null,
+		queries: [],
 		...over
 	});
 	const target = (isAsync: boolean, springAsync = false) => ({

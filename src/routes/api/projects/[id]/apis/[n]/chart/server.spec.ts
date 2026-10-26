@@ -87,7 +87,33 @@ beforeEach(() => {
 	});
 	getProjectFunctions.mockResolvedValue([
 		{ path: 'app.py', functions: [fn('view', [callTo('svc.py', 0), callTo('svc.py', 0)])] },
-		{ path: 'svc.py', functions: [fn('go', [callTo('svc.py', 1)]), fn('deeper')] }
+		{
+			path: 'svc.py',
+			functions: [
+				fn('go', [callTo('svc.py', 1)]),
+				fn('deeper', [
+					{
+						receiver: 'Customer.query',
+						name: 'all',
+						line: 4,
+						guarded: true,
+						args: 0,
+						new: false,
+						untraced: 'library',
+						query: {
+							kind: 'orm',
+							orm: 'sqlalchemy',
+							op: 'SELECT',
+							target: 'Customer',
+							text: 'Customer.query.all()',
+							textLength: 20,
+							truncated: false,
+							executes: 'terminal'
+						}
+					}
+				])
+			]
+		}
 	]);
 });
 
@@ -99,10 +125,19 @@ describe('GET /api/projects/:id/apis/:n/chart', () => {
 		expect(body.callees.map((c: { label: string }) => c.label)).toEqual(['go']);
 	});
 
+	it('lists the queries detected anywhere in the traced flow, with their call site', async () => {
+		const body = await ((await call(endpointChart, ev({ n: '0' }))) as Response).json();
+		expect(body.queries.partial).toBe(false);
+		expect(body.queries.queries).toMatchObject([
+			{ fn: 'deeper', file: 1, line: 4, guarded: true, op: 'SELECT', target: 'Customer' }
+		]);
+	});
+
 	it('has no chart when the handler was not found', async () => {
 		expect(await ((await call(endpointChart, ev({ n: '1' }))) as Response).json()).toEqual({
 			root: null,
-			callees: []
+			callees: [],
+			queries: { queries: [], partial: false }
 		});
 	});
 

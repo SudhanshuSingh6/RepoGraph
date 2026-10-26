@@ -18,7 +18,8 @@
 		jpa: 'JPA/Hibernate',
 		typeorm: 'TypeORM',
 		django: 'Django',
-		sqlalchemy: 'SQLAlchemy'
+		sqlalchemy: 'SQLAlchemy',
+		sqlmodel: 'SQLModel'
 	};
 
 	const fmt = (n: number) => n.toLocaleString();

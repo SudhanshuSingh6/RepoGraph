@@ -11,7 +11,7 @@ import {
 	type Lang,
 	type TreeNode
 } from '#analysis/graph/index.ts';
-import type { Endpoint } from '#analysis/apis/index.ts';
+import type { DetectedQuery, Endpoint } from '#analysis/apis/index.ts';
 import { refKey, type FnChart } from '#analysis/apis/flowchart.ts';
 import type { FnRef } from '#analysis/apis/trace.ts';
 import { possiblyUnused } from '#analysis/hotspots/index.ts';
@@ -106,7 +106,14 @@ export class Workspace {
 	// Endpoint rows whose chart dropdown is open (indexes into `apis`), and each one's
 	// root function (null when the handler wasn't found in the repo).
 	apisOpen = new SvelteSet<number>();
-	apiCharts = $state<Record<number, { root: string | null } | { error: string } | 'loading'>>({});
+	apiCharts = $state<
+		Record<
+			number,
+			| { root: string | null; queries: { queries: DetectedQuery[]; partial: boolean } }
+			| { error: string }
+			| 'loading'
+		>
+	>({});
 	// Every function chart fetched so far, by `path#fn`, shared by all open rows.
 	fnCharts = new SvelteMap<string, FnChart | { error: string } | 'loading'>();
 	// Inline call frames opened or closed by hand (overriding the default), the
@@ -204,10 +211,17 @@ export class Workspace {
 		fetch(`/api/projects/${this.id}/apis/${n}/chart`)
 			.then(async (res) => {
 				if (!res.ok) throw new Error(`The chart couldn't be loaded (${res.status}).`);
-				const body = (await res.json()) as { root: FnChart | null; callees: FnChart[] };
+				const body = (await res.json()) as {
+					root: FnChart | null;
+					callees: FnChart[];
+					queries: { queries: DetectedQuery[]; partial: boolean };
+				};
 				for (const c of [...(body.root ? [body.root] : []), ...body.callees])
 					this.fnCharts.set(refKey(c.ref), c);
-				this.apiCharts[n] = { root: body.root ? refKey(body.root.ref) : null };
+				this.apiCharts[n] = {
+					root: body.root ? refKey(body.root.ref) : null,
+					queries: body.queries
+				};
 			})
 			.catch((e: Error) => (this.apiCharts[n] = { error: e.message }));
 	}

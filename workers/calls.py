@@ -34,6 +34,9 @@ class Call:
     # (setTimeout & co.) or 'callback' (any other function argument): runs later, if at all.
     context: str | None = None
     awaited: bool = False  # the direct operand of `await`
+    # Detected DB query alternatives on this call (queries.py), confirmed or dropped by
+    # flow_link.py; stored as `query`.
+    db: list | None = None
 
 
 @dataclass

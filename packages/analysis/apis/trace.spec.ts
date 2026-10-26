@@ -133,7 +133,7 @@ describe('traceEndpoint', () => {
 		expect(flow.truncated).toEqual({ depth: 1, nodes: 0 });
 		const stub = flow.nodes.find((n) => n.kind === 'more')!;
 		expect(stub).toMatchObject({ depth: MAX_DEPTH + 1, calls: 1, limit: 'depth' });
-		expect(summarize(flow)).toEqual({ steps: MAX_DEPTH, partial: true });
+		expect(summarize(flow)).toEqual({ steps: MAX_DEPTH, partial: true, queries: 0 });
 	});
 
 	it('places a function at its shortest depth even when the walk finds a longer path first', () => {
@@ -154,7 +154,7 @@ describe('traceEndpoint', () => {
 		expect(byLabel.get('X')!.depth).toBe(1);
 		expect(byLabel.get('Y')!.depth).toBe(2); // not cut by the 5-level limit
 		expect(flow.truncated).toEqual({ depth: 0, nodes: 0 });
-		expect(summarize(flow)).toEqual({ steps: 6, partial: false });
+		expect(summarize(flow)).toEqual({ steps: 6, partial: false, queries: 0 });
 		const d = byLabel.get('d')!.id;
 		const x = byLabel.get('X')!.id;
 		expect(flow.edges.find((e) => e.from === d && e.to === x)).toMatchObject({ back: false });
@@ -222,7 +222,7 @@ describe('traceEndpoint', () => {
 
 	it('is null for a handler that is not stored', () => {
 		expect(traceEndpoint({ path: 'x.ts', fn: 0 }, new Map(), new Map())).toBeNull();
-		expect(summarize(null)).toEqual({ steps: 0, partial: false });
+		expect(summarize(null)).toEqual({ steps: 0, partial: false, queries: 0 });
 	});
 });
 

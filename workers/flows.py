@@ -13,12 +13,14 @@ from dataclasses import dataclass, field
 from tree_sitter import Node
 
 from calls import collect_calls
+from queries import SPRING_BASES, derived_query, literal, sql_query
 
 
 @dataclass
 class Param:
     name: str
     type: str | None = None
+    arg: str | None = None  # the first type argument: `Repository<User>` → User
 
 
 @dataclass
@@ -38,6 +40,9 @@ class Function:
     body: list = field(default_factory=list)  # structure.py: the statement tree
     is_async: bool = False  # JS/TS/Python `async`
     spring_async: bool = False  # Java method annotated @Async
+    # A Spring Data repository method's query (derived from its name, or its @Query):
+    # the definition only; each call site adds its own context (queries.py).
+    query: dict | None = None
 
 
 @dataclass
@@ -45,6 +50,7 @@ class Member:
     owner: str
     name: str
     type: str
+    arg: str | None = None  # the first type argument (or a TypeORM @InjectRepository(X))
 
 
 @dataclass
@@ -130,6 +136,13 @@ class DrfRegistration:
 
 @dataclass
 class FlowFacts:
+    # Module-level variables built by a library (`prisma = new PrismaClient()`,
+    # `db = SQLAlchemy()`, `pool = new Pool()`): name → {spec, name}.
+    instances: dict = field(default_factory=dict)
+    # Python `SessionDep = Annotated[Session, …]`: alias → the annotated type.
+    aliases: dict = field(default_factory=dict)
+    # Java Spring Data repository interfaces: name → {entity}.
+    repositories: dict = field(default_factory=dict)
     functions: list[Function] = field(default_factory=list)
     members: list[Member] = field(default_factory=list)
     bindings: list[Binding] = field(default_factory=list)
@@ -252,6 +265,31 @@ def _js_type(node: Node | None) -> str | None:
     return None
 
 
+def _js_type_arg(node: Node | None) -> str | None:
+    """The first type argument of a declared type: `Repository<User>` → User."""
+    if node is not None and node.type == "type_annotation" and node.named_children:
+        node = node.named_children[0]
+    if node is None or node.type != "generic_type":
+        return None
+    args = _first(node, "type_arguments")
+    return _js_type(args.named_children[0]) if args is not None and args.named_children else None
+
+
+def _js_inject_repository(param: Node) -> str | None:
+    """TypeORM `@InjectRepository(User)` on a constructor parameter → User."""
+    for d in param.children:
+        if d.type != "decorator":
+            continue
+        call = _first(d, "call_expression")
+        if call is None or _text(call.child_by_field_name("function")) != "InjectRepository":
+            continue
+        args = call.child_by_field_name("arguments")
+        first = args.named_children[0] if args is not None and args.named_children else None
+        if first is not None and first.type == "identifier":
+            return _text(first)
+    return None
+
+
 def _js_params(params: Node | None) -> list[Param]:
     out: list[Param] = []
     if params is None:
@@ -262,7 +300,8 @@ def _js_params(params: Node | None) -> list[Param]:
         elif p.type in ("required_parameter", "optional_parameter"):
             pat = p.child_by_field_name("pattern")
             name = _text(pat) if pat is not None and pat.type == "identifier" else _text(pat)
-            out.append(Param(name, _js_type(p.child_by_field_name("type"))))
+            t = p.child_by_field_name("type")
+            out.append(Param(name, _js_type(t), _js_inject_repository(p) or _js_type_arg(t)))
         elif p.type == "assignment_pattern":
             out.append(Param(_text(p.child_by_field_name("left"))))
         elif p.type == "rest_pattern":
@@ -287,6 +326,7 @@ class _Js:
 
     def run(self) -> FlowFacts:
         self._imports_and_exports()
+        self._instances()
         self._functions(self.root, None, None)
         self._routers()
         self._routes()
@@ -348,6 +388,32 @@ class _Js:
                                                    type_only=spec_type_only))
                     if src == "express" and name == "Router":
                         self.router_ctor.add(local)
+
+    def _instances(self) -> None:
+        """Module-level variables built by a library: `new PrismaClient()`,
+        `knex({…})`, `new Pool()`, possibly inside `a || new X()`."""
+        libs = {b.local: b for b in self.f.bindings
+                if not b.spec.startswith((".", "/")) and b.kind != "star"}
+        for node in self.root.named_children:
+            decl = node.child_by_field_name("declaration") if node.type == "export_statement" \
+                else node
+            if decl is None or decl.type not in ("lexical_declaration", "variable_declaration"):
+                continue
+            for d in _named(decl, "variable_declarator"):
+                name, value = d.child_by_field_name("name"), d.child_by_field_name("value")
+                if name is None or name.type != "identifier" or value is None:
+                    continue
+                for n in _walk(value):
+                    if n.type in JS_FUNCTION_VALUES:
+                        break
+                    callee = n.child_by_field_name("constructor") if n.type == "new_expression" \
+                        else n.child_by_field_name("function") if n.type == "call_expression" \
+                        else None
+                    b = libs.get(_text(callee)) if callee is not None and \
+                        callee.type == "identifier" else None
+                    if b is not None and _text(callee) != "require":
+                        self.f.instances[_text(name)] = {"spec": b.spec, "name": b.name or b.local}
+                        break
 
     def _note_module(self, src: str) -> None:
         if src == "express":
@@ -561,14 +627,17 @@ class _Js:
                             t = _js_type(p.child_by_field_name("type"))
                             pat = p.child_by_field_name("pattern")
                             if t and pat is not None:
-                                self.f.members.append(Member(cls, _text(pat), t))
+                                arg = _js_inject_repository(p) or \
+                                    _js_type_arg(p.child_by_field_name("type"))
+                                self.f.members.append(Member(cls, _text(pat), t, arg))
                 self._functions(m, cls, name)
             elif m.type in ("public_field_definition", "field_definition"):
                 name = m.child_by_field_name("name") or m.child_by_field_name("property")
                 value = m.child_by_field_name("value")
                 t = _js_type(m.child_by_field_name("type"))
                 if t and name is not None:
-                    self.f.members.append(Member(cls, _text(name), t))
+                    self.f.members.append(Member(cls, _text(name), t,
+                                                 _js_type_arg(m.child_by_field_name("type"))))
                 if value is not None and value.type in JS_FUNCTION_VALUES and name is not None:
                     self._add_fn(_text(name), cls, value, None)
 
@@ -917,6 +986,7 @@ class _Py:
     def run(self) -> FlowFacts:
         self._imports()
         self._exports()
+        self._module_values()
         self._functions(self.root, None, None)
         self._routers()
         self._routes()
@@ -961,6 +1031,38 @@ class _Py:
                     else:
                         name = local = _text(n)
                     self.f.bindings.append(Binding(local, "named", module, name, dots=dots))
+
+    def _module_values(self) -> None:
+        """Module-level `x = Lib(…)` (instances) and `X = Annotated[T, …]` (aliases)."""
+        libs = {b.local: b for b in self.f.bindings if not b.dots and b.kind != "star"}
+        for node in self.root.named_children:
+            a = node.named_children[0] if node.type == "expression_statement" and \
+                node.named_children else None
+            if a is None or a.type != "assignment":
+                continue
+            left, value = a.child_by_field_name("left"), a.child_by_field_name("right")
+            if left is None or left.type != "identifier" or value is None:
+                continue
+            name = _text(left)
+            if value.type == "subscript" and _text(value.child_by_field_name("value")) in (
+                    "Annotated", "typing.Annotated"):
+                subs = value.children_by_field_name("subscript")
+                t = _py_type(subs[0]) if subs else None
+                if t:
+                    self.f.aliases[name] = t
+                continue
+            for n in _walk(value):
+                if n.type == "lambda":
+                    break
+                if n.type != "call":
+                    continue
+                fn = n.child_by_field_name("function")
+                head = _text(fn).split(".")[0] if fn is not None and fn.type in (
+                    "identifier", "attribute") else None
+                b = libs.get(head) if head else None
+                if b is not None:
+                    self.f.instances[name] = {"spec": b.spec, "name": b.name or b.local}
+                    break
 
     def _exports(self) -> None:
         names: list[str] = []
@@ -1296,6 +1398,14 @@ def _java_type(node: Node | None) -> str | None:
     return None
 
 
+def _java_type_arg(node: Node | None) -> str | None:
+    if node is None or node.type != "generic_type":
+        return None
+    args = _first(node, "type_arguments")
+    return _java_type(args.named_children[0]) if args is not None and args.named_children \
+        else None
+
+
 def _annotations(node: Node) -> list[tuple[str, Node | None]]:
     mods = _first(node, "modifiers")
     out = []
@@ -1384,6 +1494,7 @@ class _Java:
             return
         anns = dict(_annotations(node))
         is_controller = "RestController" in anns or "Controller" in anns
+        repo = self._repository(node, cls) if node.type == "interface_declaration" else None
         prefixes = [""]
         if is_controller and "RequestMapping" in anns:
             prefixes = _java_values(_ann_element(anns["RequestMapping"], "value", "path")) or [""]
@@ -1399,9 +1510,11 @@ class _Java:
                 self._type(m, cls)
             elif m.type == "field_declaration":
                 t = _java_type(m.child_by_field_name("type"))
+                arg = _java_type_arg(m.child_by_field_name("type"))
                 for d in m.children_by_field_name("declarator"):
                     if t:
-                        self.f.members.append(Member(cls, _text(d.child_by_field_name("name")), t))
+                        self.f.members.append(Member(cls, _text(d.child_by_field_name("name")),
+                                                     t, arg))
             elif m.type in ("method_declaration", "constructor_declaration"):
                 params = []
                 ps = m.child_by_field_name("parameters")
@@ -1409,7 +1522,8 @@ class _Java:
                     if p.type in ("formal_parameter", "spread_parameter"):
                         params.append(Param(_text(p.child_by_field_name("name")) or
                                             _text(_first(p, "variable_declarator")),
-                                            _java_type(p.child_by_field_name("type"))))
+                                            _java_type(p.child_by_field_name("type")),
+                                            _java_type_arg(p.child_by_field_name("type"))))
                 mods = _first(m, "modifiers")
                 static = mods is not None and any(c.type == "static" for c in mods.children)
                 name = _text(m.child_by_field_name("name"))
@@ -1417,11 +1531,52 @@ class _Java:
                 self.f.functions.append(Function(name, cls, _line(m), _end_line(m), params,
                                                  static, abstract=abstract))
                 self.fn_nodes.append(m)
+                if repo is not None and abstract:
+                    self.f.functions[-1].query = self._repository_query(m, name, repo, params)
                 idx = len(self.f.functions) - 1
                 if m.type == "constructor_declaration":
                     continue
                 if is_controller:
                     self._spring_route(cls, name, m, idx, prefixes)
+
+    def _repository(self, node: Node, cls: str) -> dict | None:
+        """A Spring Data repository interface: `extends JpaRepository<Owner, Integer>`,
+        with the base imported from org.springframework.data."""
+        ext = _first(node, "extends_interfaces")
+        for t in (_walk(ext) if ext is not None else []):
+            if t.type != "generic_type":
+                continue
+            base = _java_type(t)
+            if base not in SPRING_BASES:
+                continue
+            imported = any(
+                (b.kind == "named" and b.local == base and b.spec.startswith(
+                    "org.springframework.data.")) or
+                (b.kind == "package" and b.spec.startswith("org.springframework.data"))
+                for b in self.f.bindings)
+            entity = _java_type_arg(t)
+            if imported and entity:
+                self.f.repositories[cls] = {"entity": entity}
+                return self.f.repositories[cls]
+        return None
+
+    @staticmethod
+    def _repository_query(m: Node, name: str, repo: dict, params: list[Param]) -> dict | None:
+        """The method's @Query / @NativeQuery text, else its derived query."""
+        for ann, args in _annotations(m):
+            if ann not in ("Query", "NativeQuery"):
+                continue
+            value = _ann_element(args, "value")
+            sql = literal("java", value) if value is not None else None
+            native = ann == "NativeQuery" or _text(_ann_element(args, "nativeQuery")) == "true"
+            q = sql_query(sql[0] if sql else "", "jpa", sql is not None,
+                          entity_target=not native)
+            q["executes"] = "yes"
+            return q
+        q = derived_query(name, repo["entity"], [p.type for p in params])
+        if q is not None:
+            q["executes"] = "yes"
+        return q
 
     def _spring_route(self, cls: str, name: str, m: Node, idx: int, prefixes: list[str]) -> None:
         for ann, args in _annotations(m):

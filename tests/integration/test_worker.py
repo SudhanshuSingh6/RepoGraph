@@ -136,6 +136,22 @@ def resolved_calls(conn, pid):
     return [(r["path"], r["name"], r["callee"], r["target"]) for r in rows]
 
 
+def detected_queries(conn, pid):
+    """(path, function, call, op, target, executes, entity) for every stored call query."""
+    rows = conn.execute(
+        "select f.path, fn->>'name' as name, c->>'name' as callee, c->'query' as q "
+        "from parsed_flows fl join parsed_files f on f.id = fl.file_id, "
+        "jsonb_array_elements(fl.functions) fn, jsonb_array_elements(fn->'calls') c "
+        "where fl.project_id = %s and c ? 'query' order by 1, 2, 3", (pid,))
+    return [(r["path"], r["name"], r["callee"], r["q"]["op"], r["q"]["target"],
+             r["q"]["executes"], (r["q"].get("entity") or {}).get("name")) for r in rows]
+
+
+SAMPLE_QUERIES = [
+    ("backend/routes.py", "list_customers", "all", "SELECT", "Customer", "terminal", "Customer"),
+]
+
+
 SAMPLE_CALLS = [
     ("backend/app.py", "create_app", "register", "backend/routes.py"),
     ("backend/tests/test_routes.py", "test_list_customers_route_exists", "create_app",
@@ -182,6 +198,7 @@ def test_upload_import_produces_inventory(conn, user_id):
     assert entity_rows(conn, pid) == SAMPLE_ENTITIES
     assert endpoint_rows(conn, pid) == SAMPLE_ENDPOINTS
     assert resolved_calls(conn, pid) == SAMPLE_CALLS
+    assert detected_queries(conn, pid) == SAMPLE_QUERIES
     # Cleanup: the archive is gone once the job ends.
     assert conn.execute("select count(*) n from project_uploads").fetchone()["n"] == 0
 

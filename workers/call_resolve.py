@@ -48,9 +48,11 @@ class CallResolver:
             for t in ts:
                 self.decl.setdefault((i, t.name), t)
         self.members: dict[Key, dict[str, str]] = defaultdict(dict)
+        self.member_args: dict[Key, dict[str, str | None]] = defaultdict(dict)
         for i, f in enumerate(self.files):
             for m in f.flows.members:
                 self.members[(i, m.owner)].setdefault(m.name, m.type)
+                self.member_args[(i, m.owner)].setdefault(m.name, m.arg)
         self.by_package: dict[str, list[int]] = defaultdict(list)
         for i, f in enumerate(self.files):
             if f.lang == "java":
@@ -400,6 +402,36 @@ class CallResolver:
             t = self._member_type((i, fn.owner), head)
             if t is not None:
                 return t
+        return None
+
+    def receiver_decl(self, i: int, fn, receiver: str) -> tuple[str, str | None, int] | None:
+        """The declared type of a call's receiver (`repo`, `this.repo`, `self.session`),
+        its first type argument, and the file it's written in."""
+        parts = receiver.split(".")
+        if parts[0] in ("this", "self") and len(parts) == 2 and fn.owner is not None:
+            return self._member_decl((i, fn.owner), parts[1])
+        if len(parts) != 1:
+            return None
+        for p in fn.params:
+            if p.name == receiver:
+                return (p.type, p.arg, i) if p.type else None
+        for loc in fn.locals:
+            if loc.name == receiver:
+                return (loc.type, None, i)
+        if self.files[i].lang == "java" and fn.owner is not None:
+            return self._member_decl((i, fn.owner), receiver)
+        return None
+
+    def _member_decl(self, key: Key, name: str, depth: int = 0) -> tuple[str, str | None, int] | None:
+        t = self.members.get(key, {}).get(name)
+        if t is not None:
+            return t, self.member_args[key].get(name), key[0]
+        if depth >= MAX_SUPER_DEPTH:
+            return None
+        for sup in self.supertypes(key):
+            hit = self._member_decl(sup, name, depth + 1)
+            if hit is not None:
+                return hit
         return None
 
     def _member_type(self, key: Key, name: str, depth: int = 0) -> str | None:

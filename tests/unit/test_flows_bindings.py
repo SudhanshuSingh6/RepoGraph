@@ -145,16 +145,16 @@ def test_functions_members_and_params(flows):
                 "def outer():\n    def inner(): pass",
     })
     java = rows["S.java"]
-    assert {"owner": "S", "name": "repo", "type": "Repo"} in java["members"]
+    assert {"owner": "S", "name": "repo", "type": "Repo", "arg": None} in java["members"]
     go = next(f for f in java["functions"] if f["name"] == "go")
-    assert go["static"] and go["params"] == [{"name": "a", "type": None},
-                                             {"name": "b", "type": "List"}]
+    assert go["static"] and go["params"] == [{"name": "a", "type": None, "arg": None},
+                                             {"name": "b", "type": "List", "arg": "String"}]
     ts = rows["s.ts"]
-    assert {"owner": "Svc", "name": "repo", "type": "Repo"} in ts["members"]
+    assert {"owner": "Svc", "name": "repo", "type": "Repo", "arg": None} in ts["members"]
     assert not any(m["name"] == "x" for m in ts["members"])  # not a parameter property
     assert [f["name"] for f in ts["functions"]] == ["constructor", "find", "h"]
     py = rows["s.py"]
-    assert {"owner": "V", "name": "repo", "type": "Repo"} in py["members"]
-    assert {"owner": "V", "name": "n", "type": "int"} in py["members"]
+    assert {"owner": "V", "name": "repo", "type": "Repo", "arg": None} in py["members"]
+    assert {"owner": "V", "name": "n", "type": "int", "arg": None} in py["members"]
     inner = next(f for f in py["functions"] if f["name"] == "inner")
     assert inner["scope"] == "outer" and inner["owner"] is None

@@ -36,7 +36,8 @@ export function toEndpoints(
 					line: handlerFile === null ? null : e.handler.line
 				},
 				steps: 0,
-				partial: false
+				partial: false,
+				queries: 0
 			});
 		}
 	}

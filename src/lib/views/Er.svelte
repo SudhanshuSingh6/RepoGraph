@@ -20,7 +20,8 @@
 		jpa: 'JPA/Hibernate',
 		typeorm: 'TypeORM',
 		django: 'Django',
-		sqlalchemy: 'SQLAlchemy'
+		sqlalchemy: 'SQLAlchemy',
+		sqlmodel: 'SQLModel'
 	};
 
 	let stageWidth = $state(0);

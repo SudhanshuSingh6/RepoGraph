@@ -17,6 +17,7 @@ import {
 	type ChartCall,
 	type FnChart
 } from '#analysis/apis/flowchart.ts';
+import { opLabel, type CallQuery } from '#analysis/apis/queries.ts';
 import type { Step } from '#analysis/apis/steps.ts';
 import type { FnRef } from '#analysis/apis/trace.ts';
 
@@ -59,7 +60,36 @@ export type CallChip = {
 	dy: number; // the call's first line, from the box's top
 	labelLines: string[];
 	noteLines: string[];
+	queries: ChipQuery[]; // detected DB queries at this call, drawn under its note
 };
+
+/** A query row under a call: an op badge, then `target · condition` (wrapped), then
+ * its labels (may not execute, conditional, …). `dy`: from the box's top. */
+export type ChipQuery = {
+	q: CallQuery;
+	dy: number;
+	badgeW: number;
+	lines: string[];
+	flagLines: string[];
+};
+
+export const QUERY_BADGE_CHAR = 6.6; // the badge's 10px bold text
+export const QUERY_LINES = 3; // a query row's text in the chart; the rest is on hover
+
+/** The labels a query row carries, in words. */
+export function queryFlags(q: CallQuery): string[] {
+	const out: string[] = [];
+	if (q.executes === 'unknown') out.push('may not execute');
+	if (q.executesNote) out.push(q.executesNote);
+	if (q.guarded) out.push('conditional');
+	if (q.oneOf) out.push(`one of ${q.oneOf} implementations`);
+	if (q.predicate === 'unknown') out.push('condition not parsed');
+	if (q.truncated) out.push(`shortened: ${q.textLength} chars in full`);
+	return out;
+}
+
+/** What a query row says after its badge. */
+export const queryLine = (q: CallQuery) => `${q.target ?? '?'} · ${q.detail ?? q.text}`;
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -448,7 +478,13 @@ function placeNodeBox(
 ): { w: number; h: number } {
 	const chips = n.calls.map((i) => chip(i, sub));
 	const text = extraText ?? n.text;
-	const want = (c: CallChip) => `${c.label}()`.length * CHAR + 50;
+	const want = (c: CallChip) =>
+		Math.max(
+			`${c.label}()`.length * CHAR + 50,
+			...c.queries.map(
+				(x) => queryLine(x.q).length * CHAR + opLabel(x.q.op).length * QUERY_BADGE_CHAR + 80
+			)
+		);
 	const w = Math.round(
 		Math.min(BOX_MAX, Math.max(boxWidth(text), ...chips.map((c) => Math.min(BOX_MAX, want(c)))))
 	);
@@ -462,6 +498,14 @@ function placeNodeBox(
 		c.noteLines = note ? wrap(note, w - 30) : [];
 		c.dy = dy + 4;
 		dy += LINE * c.labelLines.length + NOTE_LINE * c.noteLines.length + 4;
+		for (const cq of c.queries) {
+			cq.badgeW = Math.round(opLabel(cq.q.op).length * QUERY_BADGE_CHAR + 10);
+			cq.lines = wrap(queryLine(cq.q), w - 36 - cq.badgeW, QUERY_LINES);
+			const flags = queryFlags(cq.q).join(' · ');
+			cq.flagLines = flags ? wrap(flags, w - 30) : [];
+			cq.dy = dy + 2;
+			dy += LINE * cq.lines.length + NOTE_LINE * cq.flagLines.length + 4;
+		}
 	}
 	const h = dy + 8;
 	const box: BoxShape = {
@@ -617,7 +661,8 @@ function chip(index: number, sub: Sub): CallChip {
 		targetFile: call.targets[targetIndex]?.file ?? null,
 		dy: 0,
 		labelLines: [],
-		noteLines: []
+		noteLines: [],
+		queries: call.queries.map((q) => ({ q, dy: 0, badgeW: 0, lines: [], flagLines: [] }))
 	};
 }
 
@@ -1111,7 +1156,12 @@ export function findMatches(scene: Scene, query: string): string[] {
 	const q = query.trim().toLowerCase();
 	if (!q) return [];
 	const texts = (s: Shape): string[] => {
-		if (s.type === 'box') return [s.full, ...s.calls.map((c) => c.label)];
+		if (s.type === 'box')
+			return [
+				s.full,
+				...s.calls.map((c) => c.label),
+				...s.calls.flatMap((c) => c.queries.map((x) => `${x.q.op} ${queryLine(x.q)}`))
+			];
 		if (s.type === 'diamond' || s.type === 'pill') return [s.text];
 		if (s.type === 'frame') return [s.title];
 		return [];

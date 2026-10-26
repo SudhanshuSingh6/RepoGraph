@@ -14,7 +14,7 @@ export type TypeDecl = {
 /** A supertype reference resolved to another declaration in the repo. */
 export type TypeEdge = { child: number; parent: number; kind: 'extends' | 'implements' };
 
-export type Orm = 'jpa' | 'typeorm' | 'django' | 'sqlalchemy';
+export type Orm = 'jpa' | 'typeorm' | 'django' | 'sqlalchemy' | 'sqlmodel';
 export type RelationKind = '1–1' | '1–N' | 'N–1' | 'N–N' | 'RelatedTo';
 
 /** An ORM entity (repograph-spec.md §12), as `/api/projects/:id/entities` serves it.

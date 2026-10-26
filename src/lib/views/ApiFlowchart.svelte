@@ -6,7 +6,8 @@
 	import type { Workspace } from '#lib/workspace/state.svelte.ts';
 	import FlowchartFullscreen from './FlowchartFullscreen.svelte';
 	import FlowchartSvg from './FlowchartSvg.svelte';
-	import { closedSummary, closedWords, layoutChart } from './layout/flowchartLayout.ts';
+	import { opLabel } from '#analysis/apis/queries.ts';
+	import { closedSummary, closedWords, layoutChart, queryFlags } from './layout/flowchartLayout.ts';
 
 	let { ws, n, root }: { ws: Workspace; n: number; root: FnChart } = $props();
 
@@ -61,6 +62,12 @@
 	// Full screen: the overlay draws this same scene; closing returns focus to the button.
 	let fullButton = $state<HTMLButtonElement>();
 	const endpoint = $derived(ws.apis?.[n]);
+
+	// Every query detected in the endpoint's traced flow (closed calls included).
+	const detected = $derived.by(() => {
+		const c = ws.apiCharts[n];
+		return c && c !== 'loading' && 'queries' in c ? c.queries : null;
+	});
 </script>
 
 <div class="chart">
@@ -93,8 +100,45 @@
 		and calls in a condition run before it. Which branch a request takes depends on runtime data.
 		Calls run in order unless marked: ⏳ awaited (caller waits), ⇢ deferred (caller continues; runs
 		later), ↪ in a callback (runs if and when it's called), ? may return a promise. ⚡ may throw; ↩
-		back to caller. Dashed red: exceptions; dotted: through <code>finally</code>.
+		back to caller. Dashed red: exceptions; dotted: through <code>finally</code>. DB queries show
+		under the call that runs them: UPSERT is a database upsert, SAVE an ORM insert-or-update, ? a
+		statement outside the supported SQL subset. Detected from Spring Data, JdbcTemplate, TypeORM,
+		knex, Prisma, Django, SQLAlchemy, Flask-SQLAlchemy, SQLModel and literal SQL only; other
+		libraries aren't detected.
 	</p>
+	{#if detected}
+		<section class="dq" aria-label="Detected queries">
+			<h4>
+				Detected queries ({detected.partial ? 'at least ' : ''}{detected.queries.length})
+			</h4>
+			<p class="cap">
+				Detected in the code; not all may run, and runtime order can differ.{#if detected.partial}
+					The call trace hit its limit, so there may be more.{/if}
+			</p>
+			{#if detected.queries.length}
+				<ol>
+					{#each detected.queries as q, i (i)}
+						{@const flags = queryFlags(q)}
+						<li>
+							<span class="qb op-{q.op.toLowerCase()}">{opLabel(q.op)}</span>
+							<span class="qt">{q.target ?? '?'}</span>
+							{#if flags.length}<span class="qf">{flags.join(' · ')}</span>{/if}
+							<code class="qx" title={q.text}>{q.detail ?? q.text}</code>
+							<button
+								type="button"
+								class="qw"
+								title="Select {ws.graph.files[q.file]?.path}"
+								onclick={() => (ws.selection = { file: q.file })}
+								>{q.viaRepository ?? q.fn} · {ws.graph.files[q.file]?.path}:{q.line}</button
+							>
+						</li>
+					{/each}
+				</ol>
+			{:else}
+				<p class="cap">No queries detected in this flow.</p>
+			{/if}
+		</section>
+	{/if}
 </div>
 
 {#if ws.chartFullscreen === n}
@@ -156,6 +200,110 @@
 
 	svg {
 		display: block;
+	}
+
+	.dq {
+		margin-top: 8px;
+		border-top: 1px solid var(--line);
+		padding-top: 6px;
+	}
+
+	.dq h4 {
+		margin: 0;
+		font-size: 12.5px;
+	}
+
+	.cap {
+		margin: 2px 0 6px;
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.dq ol {
+		margin: 0;
+		padding-left: 22px;
+		display: grid;
+		gap: 4px;
+		font-size: 12px;
+	}
+
+	.dq li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 4px 8px;
+	}
+
+	.qb {
+		--q: var(--muted);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--q);
+		border: 1px solid var(--q);
+		border-radius: 3px;
+		padding: 0 5px;
+		background: color-mix(in srgb, var(--q) 14%, transparent);
+	}
+
+	.qb.op-select {
+		--q: var(--lang-ts);
+	}
+
+	.qb.op-insert {
+		--q: var(--lang-py);
+	}
+
+	.qb.op-update {
+		--q: var(--lang-java);
+	}
+
+	.qb.op-delete {
+		--q: var(--accent);
+	}
+
+	.qb.op-upsert {
+		--q: var(--blast);
+	}
+
+	.qb.op-save {
+		--q: var(--lang-js);
+		border-style: dashed;
+	}
+
+	.qb.op-unknown {
+		border-style: dashed;
+	}
+
+	.qt {
+		font-weight: 700;
+	}
+
+	.qf {
+		color: var(--muted);
+		font-size: 11px;
+	}
+
+	.qx {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.qw {
+		font: inherit;
+		font-size: 11px;
+		color: var(--muted);
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		text-decoration: underline dotted;
 	}
 
 	.legend {

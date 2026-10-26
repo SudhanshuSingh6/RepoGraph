@@ -134,6 +134,11 @@
 									{#if e.handler.fn !== null}
 										<span class="steps">{plural(e.steps, 'step', 'steps')}</span>
 									{/if}
+									{#if e.queries}
+										<span class="steps" title="Detected DB queries in this flow; not all may run"
+											>{e.partial ? 'at least ' : ''}{plural(e.queries, 'query', 'queries')}</span
+										>
+									{/if}
 									{#if e.partial}
 										<span class="flag partial" title={PARTIAL}>partial</span>
 									{/if}

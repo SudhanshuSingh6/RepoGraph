@@ -8,6 +8,8 @@
 // expanded once; because its depth is already final, a long way round found first can't
 // push it past the depth limit and hide calls that are within reach by a shorter path.
 
+import { detectedQueries, type Query } from './queries.ts';
+
 export const MAX_DEPTH = 5; // call levels below the handler
 export const MAX_NODES = 40; // function and implementation nodes per flow
 export const MAX_UNTRACED_LISTED = 20;
@@ -30,6 +32,7 @@ export type StoredCall = {
 	fanout?: FnRef[];
 	implementations?: { path: string; type: string; count: number };
 	untraced?: UntracedReason;
+	query?: Query; // a detected DB query this call runs or builds (queries.ts)
 };
 
 export type StoredFunction = {
@@ -40,6 +43,7 @@ export type StoredFunction = {
 	synthetic: boolean;
 	abstract: boolean;
 	calls: StoredCall[];
+	query?: Query; // a Spring Data repository method's query definition
 };
 
 export type Layer = 'handler' | 'controller' | 'service' | 'repository' | 'other';
@@ -48,6 +52,7 @@ export type FlowNode =
 	| {
 			id: number;
 			kind: 'function';
+			ref: FnRef;
 			depth: number;
 			file: number; // index into Graph.files
 			label: string;
@@ -172,6 +177,7 @@ export function traceEndpoint(
 		nodes.push({
 			id,
 			kind: 'function',
+			ref: r,
 			depth,
 			file: fileIndex.get(r.path)!,
 			label: fn.synthetic ? 'inline handler' : fn.owner ? `${fn.owner}.${fn.name}` : fn.name,
@@ -258,12 +264,16 @@ export function traceEndpoint(
 	return { nodes, edges, truncated };
 }
 
-/** Per-endpoint numbers for the list: functions reached past the handler, and whether
- * a cap cut the trace short. */
-export function summarize(flow: Flow | null): { steps: number; partial: boolean } {
-	if (!flow) return { steps: 0, partial: false };
+/** Per-endpoint numbers for the list: functions reached past the handler, detected
+ * queries in the flow, and whether a cap cut the trace short. */
+export function summarize(
+	flow: Flow | null,
+	functions: Map<string, StoredFunction[]> = new Map()
+): { steps: number; partial: boolean; queries: number } {
+	if (!flow) return { steps: 0, partial: false, queries: 0 };
 	return {
 		steps: flow.nodes.filter((n) => n.kind === 'function').length - 1,
-		partial: flow.truncated.depth + flow.truncated.nodes > 0
+		partial: flow.truncated.depth + flow.truncated.nodes > 0,
+		queries: detectedQueries(flow, functions).queries.length
 	};
 }

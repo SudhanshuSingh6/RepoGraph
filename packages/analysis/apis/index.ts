@@ -24,3 +24,16 @@ export {
 	type UntracedReason
 } from './trace.ts';
 export { buildApisModel, type ApisModel } from './model.ts';
+export {
+	EXECUTES_WORDS,
+	OP_WORDS,
+	QUERY_OPS,
+	callQueries,
+	detectedQueries,
+	opLabel,
+	type CallQuery,
+	type DetectedQuery,
+	type Executes,
+	type Query,
+	type QueryOp
+} from './queries.ts';

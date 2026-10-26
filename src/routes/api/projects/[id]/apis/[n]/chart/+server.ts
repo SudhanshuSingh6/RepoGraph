@@ -1,12 +1,14 @@
 import { error, json } from '@sveltejs/kit';
 import { toFnChart, type FnChart } from '#analysis/apis/flowchart.ts';
+import { detectedQueries } from '#analysis/apis/queries.ts';
 import { getApisModel } from '#lib/server/apis/model.ts';
 import { requireProjectAccess } from '#lib/server/auth/guards.ts';
 import type { RequestHandler } from './$types';
 
 /** Endpoint n's control-flow chart (n indexes `/apis`'s endpoint list): its handler and
- * the functions the handler calls directly, which open inline from the start. `root` is
- * null when the handler wasn't found in the repo. Deeper calls load from `../../chart`. */
+ * the functions the handler calls directly, which open inline from the start, and the
+ * DB queries detected anywhere in its traced flow. `root` is null when the handler
+ * wasn't found in the repo. Deeper calls load from `../../chart`. */
 export const GET: RequestHandler = async (event) => {
 	const project = await requireProjectAccess(event, event.params.id);
 	if (project.status !== 'ready' || !project.parsedAt) {
@@ -16,7 +18,8 @@ export const GET: RequestHandler = async (event) => {
 	const m = await getApisModel({ ...project, parsedAt: project.parsedAt });
 	if (!Number.isInteger(n) || n < 0 || n >= m.endpoints.length) error(404, 'No such endpoint.');
 	const h = m.endpoints[n].handler;
-	if (h.file === null || h.fn === null) return json({ root: null, callees: [] });
+	const none = { queries: [], partial: false };
+	if (h.file === null || h.fn === null) return json({ root: null, callees: [], queries: none });
 	const root = toFnChart(
 		{ path: m.files[h.file].path, fn: h.fn },
 		m.functions,
@@ -34,5 +37,5 @@ export const GET: RequestHandler = async (event) => {
 			if (c) callees.push(c);
 		}
 	}
-	return json({ root, callees });
+	return json({ root, callees, queries: detectedQueries(m.flows[n], m.functions) });
 };

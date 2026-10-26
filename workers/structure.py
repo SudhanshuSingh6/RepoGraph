@@ -13,6 +13,7 @@ source says.
 from tree_sitter import Node
 
 from calls import Call, Local, _java_call, _java_local, _js_call, _js_local, _py_call, _py_local
+from queries import detect as detect_queries
 
 TEXT_MAX = 400
 STEP_MAX = 400
@@ -91,6 +92,7 @@ class Builder:
         self.recorded = recorded
         self.fn_node = fn_node
         self.calls: list[Call] = []
+        self.nodes: list[Node] = []  # each call's node, for queries.detect
         self.locals: list[Local] = []
         self._seen_locals: set[str] = set()
         self.count = 0
@@ -231,6 +233,7 @@ class Builder:
         c.when = when
         c.context = context
         self.calls.append(c)
+        self.nodes.append(node)
         return out + [len(self.calls) - 1]
 
     def part(self, node: Node | None) -> dict | None:
@@ -564,6 +567,7 @@ def build_function(lang: str, fn, node: Node, recorded: set[tuple[int, int]]) ->
         steps += b.body(body)
     if b.omitted:
         steps.append({"kind": "truncated", "omitted": b.omitted})
+    detect_queries(lang, b.calls, b.nodes, node)
     fn.calls = b.calls
     fn.locals = b.locals
     fn.body = steps

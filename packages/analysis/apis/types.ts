@@ -22,6 +22,7 @@ export type Endpoint = {
 	handler: { label: string; file: number | null; fn: number | null; line: number | null };
 	steps: number; // functions its call flow reaches past the handler
 	partial: boolean; // the call flow hit a cap
+	queries: number; // detected DB queries in its flow (queries.ts)
 };
 
 /** One file's stored endpoints, as the worker wrote them (paths, not indexes). */

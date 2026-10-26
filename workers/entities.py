@@ -6,6 +6,7 @@ still parsed once. Relationship targets are kept as written (`'app.Tag'`,
 entities in the app, within the same language and ORM only.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from tree_sitter import Node
@@ -39,7 +40,7 @@ class Relation:
 class Entity:
     name: str
     table: str  # the declared table name, else the class name
-    orm: str  # jpa | typeorm | django | sqlalchemy
+    orm: str  # jpa | typeorm | django | sqlalchemy | sqlmodel
     fields: list[Field] = field(default_factory=list)
     relations: list[Relation] = field(default_factory=list)
     line: int = 0  # 1-based
@@ -307,12 +308,47 @@ def sqlalchemy_entity(cls: Node) -> Entity | None:
     return entity
 
 
+def sqlmodel_entity(cls: Node) -> Entity | None:
+    """`class Hero(SQLModel, table=True)` (or a table subclass of a SQLModel model):
+    only `table=True` classes are tables."""
+    name = _text(cls.child_by_field_name("name"))
+    sup = cls.child_by_field_name("superclasses")
+    table = any(a.type == "keyword_argument" and _text(a.child_by_field_name("name")) == "table"
+                and _text(a.child_by_field_name("value")) == "True"
+                for a in (sup.named_children if sup is not None else []))
+    if not name or not table:
+        return None
+    assigns = _assignments(cls)
+    tablename = next((_string(v) for a, v in assigns if a == "__tablename__"), None)
+    entity = Entity(name, tablename or name.lower(), "sqlmodel", line=cls.start_point[0] + 1)
+    body = cls.child_by_field_name("body")
+    for stmt in body.named_children if body is not None else []:
+        a = stmt.named_children[0] if stmt.type == "expression_statement" and \
+            stmt.named_children else None
+        if a is None or a.type != "assignment":
+            continue
+        left, typ, right = (a.child_by_field_name(k) for k in ("left", "type", "right"))
+        if left is None or left.type != "identifier" or typ is None:
+            continue
+        call = _call(right) if right is not None else None
+        if call is not None and _last(call[0]) == "Relationship":
+            target = next((m for m in re.findall(r"[A-Z]\w*", _text(typ))
+                           if m not in ("Optional", "List", "None")), None)
+            if target:
+                entity.relations.append(Relation(_text(left), RELATED, target))
+            continue
+        pk = call is not None and _last(call[0]) == "Field" and \
+            _text(call[2].get("primary_key")) == "True"
+        entity.fields.append(Field(_text(left), _text(typ), pk))
+    return entity
+
+
 def extract_entities(lang: str, classes: list[Node]) -> list[Entity]:
     """Every ORM entity among a file's class declarations."""
     if lang == "java":
         detectors = [jpa_entity]
     elif lang == "py":
-        detectors = [django_entity, sqlalchemy_entity]
+        detectors = [django_entity, sqlmodel_entity, sqlalchemy_entity]
     else:
         detectors = [typeorm_entity]
     out = []

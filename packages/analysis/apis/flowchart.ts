@@ -5,6 +5,7 @@
 
 import type { FileNode } from '../graph/types.ts';
 import type { Lang } from './cfg.ts';
+import { callQueries, type CallQuery } from './queries.ts';
 import type { Step } from './steps.ts';
 import type { FnRef, StoredCall, StoredFunction, UntracedReason } from './trace.ts';
 
@@ -30,6 +31,7 @@ export type ChartCall = {
 	targets: ChartTarget[]; // one for `target`, up to 3 for `fanout`
 	implementations: { type: string; count: number } | null;
 	reason: UntracedReason | null;
+	queries: CallQuery[]; // detected DB queries at this call (queries.ts)
 };
 
 export type FnChart = {
@@ -110,7 +112,8 @@ export function toFnChart(
 			implementations: c.implementations
 				? { type: c.implementations.type, count: c.implementations.count }
 				: null,
-			reason: c.untraced ?? null
+			reason: c.untraced ?? null,
+			queries: callQueries(c, functions)
 		};
 	});
 	return {

@@ -20,6 +20,6 @@ export function buildApisModel(
 			? null
 			: traceEndpoint({ path: files[e.handler.file].path, fn: e.handler.fn }, functions, fileIndex)
 	);
-	endpoints.forEach((e, n) => Object.assign(e, summarize(flows[n])));
+	endpoints.forEach((e, n) => Object.assign(e, summarize(flows[n], functions)));
 	return { endpoints, flows };
 }
